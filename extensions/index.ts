@@ -113,6 +113,38 @@ export function getExtensionFromContentType(contentType: string | null, url: str
 	return "bin";
 }
 
+/** Format bytes to human readable string */
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/** Build informative header for fetch results */
+function buildFetchHeader(details: WebfetchDetails): string {
+	const lines = [
+		`## Fetched: ${details.url}`,
+		`- **Status**: ${details.status}`,
+		`- **Content-Type**: ${details.contentType || "unknown"}`,
+		`- **Processed as**: ${details.processedAs}`,
+	];
+
+	if (details.originalSize !== undefined) {
+		lines.push(`- **Original size**: ${formatBytes(details.originalSize)}`);
+	}
+
+	if (details.tempFileSize !== undefined) {
+		lines.push(`- **Content size**: ${formatBytes(details.tempFileSize)}`);
+	}
+
+	if (details.truncated) {
+		lines.push(`- **Note**: Content truncated to ${formatBytes(MAX_MARKDOWN_SIZE)}`);
+	}
+
+	lines.push("\n---\n");
+	return lines.join("\n");
+}
+
 /** Truncate text to max size */
 export function truncateToSize(text: string, maxSize: number): string {
 	const bytes = Buffer.byteLength(text, "utf-8");
@@ -143,13 +175,14 @@ export function convertToMarkdown(html: string): string {
 	return td.turndown(html);
 }
 
-/** Fetch and process a URL, returning result without writing to disk */
 export async function fetchUrl(
 	url: string,
 	fetchFn: typeof fetch = fetch,
 	maxMarkdownSize: number = MAX_MARKDOWN_SIZE
 ): Promise<FetchResult> {
 	let response: Response;
+	let details: WebfetchDetails;
+
 	try {
 		response = await fetchFn(url, {
 			headers: {
@@ -159,14 +192,10 @@ export async function fetchUrl(
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
+		details = { url, contentType: null, status: 0, processedAs: "error" };
 		return {
-			content: [{ type: "text", text: `Failed to fetch ${url}: ${message}` }],
-			details: {
-				url,
-				contentType: null,
-				status: 0,
-				processedAs: "error",
-			},
+			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to fetch ${url}: ${message}` }],
+			details,
 		};
 	}
 
@@ -175,14 +204,10 @@ export async function fetchUrl(
 
 	// Handle non-OK responses
 	if (!response.ok) {
+		details = { url, contentType, status, processedAs: "error" };
 		return {
-			content: [{ type: "text", text: `HTTP ${status} for ${url}` }],
-			details: {
-				url,
-				contentType,
-				status,
-				processedAs: "error",
-			},
+			content: [{ type: "text", text: buildFetchHeader(details) + `HTTP ${status} for ${url}` }],
+			details,
 		};
 	}
 
@@ -203,28 +228,26 @@ export async function fetchUrl(
 			const truncated = Buffer.byteLength(markdown, "utf-8") > maxMarkdownSize;
 			markdown = truncateToSize(markdown, maxMarkdownSize);
 
+			details = {
+				url,
+				contentType,
+				status,
+				processedAs: "markdown",
+				tempFileSize: Buffer.byteLength(markdown, "utf-8"),
+				truncated,
+				originalSize,
+			};
+
 			return {
-				content: [{ type: "text", text: markdown }],
-				details: {
-					url,
-					contentType,
-					status,
-					processedAs: "markdown",
-					tempFileSize: Buffer.byteLength(markdown, "utf-8"),
-					truncated,
-					originalSize,
-				},
+				content: [{ type: "text", text: buildFetchHeader(details) + markdown }],
+				details,
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
+			details = { url, contentType, status, processedAs: "error" };
 			return {
-				content: [{ type: "text", text: `Failed to process ${url}: ${message}` }],
-				details: {
-					url,
-					contentType,
-					status,
-					processedAs: "error",
-				},
+				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${url}: ${message}` }],
+				details,
 			};
 		}
 	}
@@ -233,27 +256,20 @@ export async function fetchUrl(
 	try {
 		const buffer = await response.arrayBuffer();
 		const data = Buffer.from(buffer);
+		const size = data.byteLength;
+
+		details = { url, contentType, status, processedAs: "binary", tempFileSize: size };
 
 		return {
-			content: [{ type: "text", text: `Downloaded binary file (${data.byteLength} bytes, Content-Type: ${contentType || "unknown"})` }],
-			details: {
-				url,
-				contentType,
-				status,
-				processedAs: "binary",
-				tempFileSize: data.byteLength,
-			},
+			content: [{ type: "text", text: buildFetchHeader(details) + `Downloaded binary file (${formatBytes(size)}, Content-Type: ${contentType || "unknown"})` }],
+			details,
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
+		details = { url, contentType, status, processedAs: "error" };
 		return {
-			content: [{ type: "text", text: `Failed to download ${url}: ${message}` }],
-			details: {
-				url,
-				contentType,
-				status,
-				processedAs: "error",
-			},
+			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to download ${url}: ${message}` }],
+			details,
 		};
 	}
 }

@@ -229,7 +229,7 @@ describe("fetchUrl", () => {
 	});
 
 	describe("HTML content", () => {
-		it("converts HTML to markdown", async () => {
+		it("converts HTML to markdown with header", async () => {
 			const mockResponse = {
 				ok: true,
 				status: 200,
@@ -243,6 +243,7 @@ describe("fetchUrl", () => {
 			expect(result.details.processedAs).toBe("markdown");
 			expect(result.content[0].text).toContain("# Hello");
 			expect(result.content[0].text).toContain("World");
+			expect(result.content[0].text).toContain("## Fetched: https://example.com");
 		});
 
 		it("tracks original size", async () => {
@@ -277,7 +278,7 @@ describe("fetchUrl", () => {
 	});
 
 	describe("plain text content", () => {
-		it("returns plain text as-is", async () => {
+		it("returns plain text as-is with header", async () => {
 			const text = "Plain text content";
 			const mockResponse = {
 				ok: true,
@@ -290,7 +291,8 @@ describe("fetchUrl", () => {
 			const result = await fetchUrl("https://example.com", mockFetch);
 
 			expect(result.details.processedAs).toBe("markdown");
-			expect(result.content[0].text).toBe(text);
+			expect(result.content[0].text).toContain(text);
+			expect(result.content[0].text).toContain("## Fetched: https://example.com");
 		});
 	});
 
