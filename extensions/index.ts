@@ -12,13 +12,79 @@
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { writeFile } from "node:fs/promises";
+import { load } from "cheerio";
 import TurndownService from "turndown";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
 
 /** Maximum size for markdown content (100KB) */
 export const MAX_MARKDOWN_SIZE = 100 * 1024;
+
+/**
+ * Detect if URL is a GitHub blob/file URL and return the raw URL
+ * github.com/user/repo/blob/branch/path → raw.githubusercontent.com/user/repo/branch/path
+ */
+export function convertGitHubToRaw(url: string): { rawUrl: string; isGitHubRaw: boolean } {
+	const githubBlobMatch = url.match(
+		/^https?:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/
+	);
+	if (githubBlobMatch) {
+		const [, user, repo, branch, ...pathParts] = githubBlobMatch;
+		const path = pathParts.join("/");
+		return {
+			rawUrl: `https://raw.githubusercontent.com/${user}/${repo}/${branch}/${path}`,
+			isGitHubRaw: true,
+		};
+	}
+	return { rawUrl: url, isGitHubRaw: false };
+}
+
+/**
+ * Extract main content from HTML using cheerio
+ * Prioritizes: <article>, <main>, <div role="main">, .markdown-body, .content
+ * Falls back to full HTML if no main content found
+ */
+export function extractMainContent(html: string): { content: string; extracted: boolean } {
+	const $ = load(html);
+
+	// Remove noise: scripts, styles, nav, footer, headers
+	$('script, style, nav, footer, header, aside, .header, .footer, .sidebar, .navbar, .repo-header, .commit-placeholder').remove();
+
+	// Try to find main content in order of preference
+	const contentSelectors = [
+		'article',
+		'main',
+		'[role="main"]',
+		'.markdown-body',
+		'.file-content',
+		'.file-body',
+		'.content',
+		'#content',
+		'.article-content',
+		'.post-content',
+		'.entry-content',
+		'#readme',
+		'.readme',
+	];
+
+	for (const selector of contentSelectors) {
+		const $content = $(selector);
+		if ($content.length > 0) {
+			const text = $.html($content);
+			// Only use extracted content if it has substantial content
+			if (text.length > 500) {
+				return { content: text, extracted: true };
+			}
+		}
+	}
+
+	// No main content found, use body or full HTML
+	const $body = $('body');
+	if ($body.length > 0) {
+		return { content: $.html($body), extracted: true };
+	}
+	return { content: html, extracted: false };
+}
 
 export interface WebfetchDetails {
 	url: string;
@@ -29,6 +95,7 @@ export interface WebfetchDetails {
 	tempFileSize?: number;
 	truncated?: boolean;
 	originalSize?: number;
+	extracted?: boolean; // Whether main content was extracted from HTML
 }
 
 export interface FetchOptions {
@@ -141,6 +208,10 @@ function buildFetchHeader(details: WebfetchDetails): string {
 		lines.push(`- **Note**: Content truncated to ${formatBytes(MAX_MARKDOWN_SIZE)}`);
 	}
 
+	if (details.extracted) {
+		lines.push(`- **Content extracted**: Main content extracted from HTML`);
+	}
+
 	lines.push("\n---\n");
 	return lines.join("\n");
 }
@@ -183,11 +254,15 @@ export async function fetchUrl(
 	let response: Response;
 	let details: WebfetchDetails;
 
+	// Check if URL is a GitHub blob that should be fetched as raw
+	const { rawUrl, isGitHubRaw } = convertGitHubToRaw(url);
+	const fetchUrl = isGitHubRaw ? rawUrl : url;
+
 	try {
-		response = await fetchFn(url, {
+		response = await fetchFn(fetchUrl, {
 			headers: {
 				"User-Agent": "pi-webfetch/1.0",
-				Accept: "text/html,text/plain,application/xml,application/json,*/*",
+				Accept: isGitHubRaw ? "text/plain,text/markdown,text/*,*/*" : "text/html,text/plain,application/xml,application/json,*/*",
 			},
 		});
 	} catch (error) {
@@ -212,16 +287,25 @@ export async function fetchUrl(
 	}
 
 	// Check if we should convert to markdown
-	if (isTextContentType(contentType)) {
+	if (isTextContentType(contentType) || isGitHubRaw) {
 		try {
 			const html = await response.text();
 			const originalSize = Buffer.byteLength(html, "utf-8");
 
 			let markdown: string;
-			if (contentType?.includes("text/html")) {
-				markdown = convertToMarkdown(html);
+
+			// For GitHub raw URLs or plain text, use as-is
+			if (isGitHubRaw || contentType?.includes("text/plain") || contentType?.includes("text/markdown")) {
+				markdown = html;
+			} else if (contentType?.includes("text/html")) {
+				// For HTML, extract main content first
+				const { content: extractedHtml, extracted } = extractMainContent(html);
+				markdown = convertToMarkdown(extractedHtml);
+				if (extracted) {
+					details = { url, contentType, status, processedAs: "markdown", originalSize, extracted: true };
+				}
 			} else {
-				// Plain text - use as-is
+				// Other text types - use as-is
 				markdown = html;
 			}
 
@@ -249,6 +333,33 @@ export async function fetchUrl(
 				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${url}: ${message}` }],
 				details,
 			};
+		}
+	}
+
+	// For GitHub raw URLs that weren't detected as text (fallback)
+	if (isGitHubRaw) {
+		try {
+			const text = await response.text();
+			const originalSize = Buffer.byteLength(text, "utf-8");
+			const truncated = Buffer.byteLength(text, "utf-8") > maxMarkdownSize;
+			const finalText = truncateToSize(text, maxMarkdownSize);
+
+			details = {
+				url,
+				contentType: "text/plain",
+				status,
+				processedAs: "markdown",
+				tempFileSize: Buffer.byteLength(finalText, "utf-8"),
+				truncated,
+				originalSize,
+			};
+
+			return {
+				content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
+				details,
+			};
+		} catch {
+			// Fall through to binary handling
 		}
 	}
 
@@ -287,7 +398,7 @@ export default function (pi: ExtensionAPI) {
 			url: Type.String({ description: "The URL to fetch" }),
 		}),
 
-		async execute(_toolCallId, params, signal) {
+		async execute(_toolCallId, params, _signal) {
 			const { url } = params;
 			return fetchUrl(url, fetch, MAX_MARKDOWN_SIZE);
 		},

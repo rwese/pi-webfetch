@@ -4,7 +4,9 @@
   "private": true,
   "type": "module",
   "pi": {
-    "extensions": ["./extensions"]
+    "extensions": [
+      "./extensions"
+    ]
   },
   "scripts": {
     "clean": "rm -rf dist coverage",
@@ -18,21 +20,24 @@
     "validate": "npm run typecheck && npm run lint && npm run test"
   },
   "dependencies": {
+    "cheerio": "^1.0.0",
     "turndown": "^7.2.0"
   },
   "devDependencies": {
     "@mariozechner/pi-coding-agent": "latest",
     "@sinclair/typebox": "latest",
+    "@types/cheerio": "^1.0.0",
     "@types/node": "^22.0.0",
     "@types/turndown": "^5.0.5",
-    "@vitest/coverage-v8": "^4.1.4",
-    "happy-dom": "^20.8.9",
-    "typescript": "^5.8.0",
-    "vitest": "^4.1.4",
-    "eslint": "^9.0.0",
     "@typescript-eslint/eslint-plugin": "^8.0.0",
     "@typescript-eslint/parser": "^8.0.0",
-    "prettier": "^3.4.0"
+    "@vitest/coverage-v8": "^4.1.4",
+    "eslint": "^9.0.0",
+    "eslint-plugin-n": "^17.24.0",
+    "happy-dom": "^20.8.9",
+    "prettier": "^3.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.4"
   },
   "peerDependencies": {
     "@mariozechner/pi-coding-agent": "*",

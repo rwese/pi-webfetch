@@ -5,6 +5,8 @@ import {
 	getExtensionFromContentType,
 	truncateToSize,
 	convertToMarkdown,
+	convertGitHubToRaw,
+	extractMainContent,
 	fetchUrl,
 	MAX_MARKDOWN_SIZE,
 } from "../extensions/index";
@@ -134,6 +136,96 @@ describe("truncateToSize", () => {
 		const text = "Exactly20Chars!------------";
 		const maxSize = Buffer.byteLength(text, "utf-8");
 		expect(truncateToSize(text, maxSize)).toBe(text);
+	});
+});
+
+describe("convertGitHubToRaw", () => {
+	it("converts github blob URL to raw", () => {
+		const result = convertGitHubToRaw(
+			"https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/extensions.md"
+		);
+		expect(result.rawUrl).toBe(
+			"https://raw.githubusercontent.com/badlogic/pi-mono/main/packages/coding-agent/docs/extensions.md"
+		);
+		expect(result.isGitHubRaw).toBe(true);
+	});
+
+	it("handles branch with slashes", () => {
+		const result = convertGitHubToRaw(
+			"https://github.com/user/repo/blob/feature/test/file.txt"
+		);
+		expect(result.rawUrl).toBe(
+			"https://raw.githubusercontent.com/user/repo/feature/test/file.txt"
+		);
+	});
+
+	it("returns original URL for non-GitHub URLs", () => {
+		const result = convertGitHubToRaw("https://example.com/page");
+		expect(result.rawUrl).toBe("https://example.com/page");
+		expect(result.isGitHubRaw).toBe(false);
+	});
+
+	it("returns original URL for non-blob GitHub URLs", () => {
+		const result = convertGitHubToRaw("https://github.com/user/repo");
+		expect(result.rawUrl).toBe("https://github.com/user/repo");
+		expect(result.isGitHubRaw).toBe(false);
+	});
+});
+
+describe("extractMainContent", () => {
+	it("extracts article content", () => {
+		const html = `
+		<!DOCTYPE html>
+		<html>
+		<head><title>Test</title></head>
+		<body>
+			<nav>Navigation</nav>
+			<article><h1>Title</h1><p>Main content here</p></article>
+			<footer>Footer</footer>
+		</body>
+		</html>
+		`;
+		const result = extractMainContent(html);
+		expect(result.extracted).toBe(true);
+		expect(result.content).toContain("<h1>Title</h1>");
+		expect(result.content).toContain("Main content here");
+		expect(result.content).not.toContain("Navigation");
+		expect(result.content).not.toContain("Footer");
+	});
+
+	it("extracts main element", () => {
+		const html = `
+		<html>
+		<body>
+			<header>Header</header>
+			<main><p>Main content</p></main>
+		</body>
+		</html>
+		`;
+		const result = extractMainContent(html);
+		expect(result.extracted).toBe(true);
+		expect(result.content).toContain("Main content");
+	});
+
+	it("extracts markdown-body class (GitHub style)", () => {
+		const html = `
+		<html>
+		<body>
+			<div class=\"header\">Header</div>
+			<div class=\"markdown-body\"><p>Readme content</p></div>
+		</body>
+		</html>
+		`;
+		const result = extractMainContent(html);
+		expect(result.extracted).toBe(true);
+		expect(result.content).toContain("Readme content");
+	});
+
+	it("falls back to body when no main content found", () => {
+		const html = `<html><body><p>Some content</p></body></html>`;
+		const result = extractMainContent(html);
+		expect(result.extracted).toBe(true);
+		expect(result.content).toContain("Some content");
 	});
 });
 
