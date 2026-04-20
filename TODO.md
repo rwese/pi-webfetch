@@ -1,33 +1,33 @@
-# TODO: Fix Binary Content Detection
+# TODO: Fix Binary Content Detection & Improve Markdown Extraction
 
-## Plan
-Fix webfetch to detect binary content types before attempting browser fetch.
+## Completed
 
-## Tasks
-
+### Binary Content Detection (v0.1.0)
 - [x] 1. Add early content-type detection using HEAD request
 - [x] 2. Skip browser fetch for binary content-types
 - [x] 3. Add URL extension check as fallback
 - [x] 4. Add test for PDF binary detection
-- [x] 5. Test with actual PDF URL - committed, ready for integration test
+- [x] 5. Test with actual PDF URL
 
-## Progress Log
-- 2026-04-20: Implemented fix - all tasks 1-4 complete
-- Added `isLikelyBinaryUrl()` function for URL extension detection
-- Added `probeContentType()` for HEAD request content-type detection
-- Updated binary handling to save to temp file
-- Added 6 new tests for `isLikelyBinaryUrl()`
-- All 39 tests passing, validation passes
+### Hybrid Browser Extraction (v0.2.0)
+- [x] Use `get html` from browser instead of `get text`
+- [x] Convert HTML to markdown with turndown
+- [x] Add text ratio check for content quality
+- [x] Fall back to text extraction when HTML is poor quality
+- [x] Tested with Google Support (markdown) and MiniMax (text fallback)
 
-## Implementation Details
+## Test Results
 
-### Changes to `extensions/index.ts`:
-1. Added `BINARY_EXTENSIONS` constant with common binary file extensions
-2. Added `isLikelyBinaryUrl()` function to check URL extension
-3. Added `probeContentType()` function for HEAD request
-4. Modified `fetchUrl()` to probe content-type before browser fetch
-5. Updated binary handling to save to temp file with path in response
+| URL | Content Type | Method | Result |
+|-----|--------------|--------|--------|
+| Google Support | HTML with `<article>` | Markdown | ✅ Preserves headings, lists |
+| MiniMax | SPA, no semantic elements | Text fallback | ✅ Clean text |
+| NextCloud PDF | Binary PDF | Binary download | ✅ Saved to temp |
 
-### Changes to `test/webfetch.test.ts`:
-1. Added import for `isLikelyBinaryUrl`
-2. Added 6 new tests for URL extension detection
+## Commits
+
+| Commit | Description |
+|--------|-------------|
+| `86b59a2` | fix: detect binary content before browser fetch |
+| `47395b4` | docs: update TODO with completion status |
+| `f9c67f4` | feat: hybrid browser extraction - markdown with text fallback |

@@ -745,6 +745,51 @@ export async function fetchUrl(
 }
 
 /**
+ * Download a file from URL to a specific destination path
+ */
+export async function downloadFile(
+	url: string,
+	destination: string,
+	fetchFn: typeof fetch = fetch
+): Promise<{ success: boolean; message: string; size?: number; contentType?: string }> {
+	try {
+		const response = await fetchFn(url, {
+			headers: {
+				"User-Agent": "pi-webfetch/1.0",
+			},
+		});
+
+		if (!response.ok) {
+			return {
+				success: false,
+				message: `HTTP ${response.status} for ${url}`,
+			};
+		}
+
+		const contentType = response.headers.get("content-type") || undefined;
+		const buffer = await response.arrayBuffer();
+		const data = Buffer.from(buffer);
+		const size = data.byteLength;
+
+		const fs = await import("node:fs");
+		fs.writeFileSync(destination, data);
+
+		return {
+			success: true,
+			message: `Downloaded to: ${destination}`,
+			size,
+			contentType,
+		};
+	} catch (error) {
+		const message = error instanceof Error ? error.message : String(error);
+		return {
+			success: false,
+			message: `Failed to download ${url}: ${message}`,
+		};
+	}
+}
+
+/**
  * Explicit browser-based fetch for SPA pages
  */
 export async function fetchUrlWithBrowser(
@@ -838,6 +883,44 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal) {
 			const { url, waitFor = "networkidle", timeout = 30000 } = params;
 			return fetchUrlWithBrowser(url, waitFor, timeout);
+		},
+	});
+
+	pi.registerTool({
+		name: "download-file",
+		label: "Download File",
+		description:
+			"Download a file from a URL to a specific destination path. " +
+			"Use this for binary files (PDF, ZIP, images, etc.) or any file you want to save directly. " +
+			"URL and destination are required.",
+		parameters: Type.Object({
+			url: Type.String({ description: "The URL of the file to download" }),
+			destination: Type.String({ description: "The destination path where the file will be saved" }),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			const { url, destination } = params;
+			const result = await downloadFile(url, destination, fetch);
+
+			const lines = [
+				`## Download: ${url}`,
+				`- **Destination**: ${destination}`,
+				`- **Status**: ${result.success ? "Success" : "Failed"}`,
+			];
+
+			if (result.size !== undefined) {
+				lines.push(`- **Size**: ${formatBytes(result.size)}`);
+			}
+			if (result.contentType) {
+				lines.push(`- **Content-Type**: ${result.contentType}`);
+			}
+			lines.push("\n---\n");
+			lines.push(result.message);
+
+			return {
+				content: [{ type: "text", text: lines.join("\n") }],
+				details: result,
+			};
 		},
 	});
 }
