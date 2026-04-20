@@ -1,20 +1,27 @@
-# TODO: Fix Binary Content Detection & Improve Markdown Extraction
+# pi-webfetch Extension
 
-## Completed
+## Tools
 
-### Binary Content Detection (v0.1.0)
-- [x] 1. Add early content-type detection using HEAD request
-- [x] 2. Skip browser fetch for binary content-types
-- [x] 3. Add URL extension check as fallback
-- [x] 4. Add test for PDF binary detection
-- [x] 5. Test with actual PDF URL
+| Tool | Description |
+|------|-------------|
+| `webfetch` | Fetch URL, process content (HTML→markdown, binary→temp) |
+| `webfetch-spa` | Force browser rendering for JS-heavy pages |
+| `download-file` | Download file to specific destination |
 
-### Hybrid Browser Extraction (v0.2.0)
-- [x] Use `get html` from browser instead of `get text`
-- [x] Convert HTML to markdown with turndown
-- [x] Add text ratio check for content quality
-- [x] Fall back to text extraction when HTML is poor quality
-- [x] Tested with Google Support (markdown) and MiniMax (text fallback)
+## Features
+
+### Binary Content Detection
+- Probes Content-Type via HEAD request before browser fetch
+- Skips browser for known binary types (PDF, ZIP, images, etc.)
+- Falls back to URL extension check
+
+### Hybrid Browser Extraction
+- Uses `get html` from browser → converts to markdown
+- Falls back to `get text` if HTML is poor quality (low text ratio)
+
+### Download File
+- Explicit download to user-specified destination
+- Returns success, size, content-type
 
 ## Test Results
 
@@ -23,11 +30,4 @@
 | Google Support | HTML with `<article>` | Markdown | ✅ Preserves headings, lists |
 | MiniMax | SPA, no semantic elements | Text fallback | ✅ Clean text |
 | NextCloud PDF | Binary PDF | Binary download | ✅ Saved to temp |
-
-## Commits
-
-| Commit | Description |
-|--------|-------------|
-| `86b59a2` | fix: detect binary content before browser fetch |
-| `47395b4` | docs: update TODO with completion status |
-| `f9c67f4` | feat: hybrid browser extraction - markdown with text fallback |
+| PDF (download-file) | Binary PDF | Explicit download | ✅ Saved to `/tmp/test.pdf` |

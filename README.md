@@ -4,10 +4,11 @@ Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) - 
 
 ## Features
 
-- **HTML pages** → Browser rendering via `agent-browser` → plain text
+- **HTML pages** → Browser rendering via `agent-browser` → markdown
 - **Plain text** → Returned as-is
 - **Binary files** → Downloaded to temp directory
 - **Auto-fallback** → Uses static fetch with warning if browser unavailable
+- **Hybrid extraction** → Markdown when HTML has good text ratio, text fallback otherwise
 
 ## Tools
 
@@ -31,6 +32,14 @@ webfetch-spa --url "https://reddit.com/r/example"
 - `waitFor` - `"networkidle"` (default) or `"domcontentloaded"`
 - `timeout` - Timeout in ms (default: 30000)
 
+### `download-file`
+
+Download a file to a specific destination.
+
+```
+download-file --url "https://example.com/file.pdf" --destination "/path/to/save/file.pdf"
+```
+
 **Requires:** `agent-browser` CLI
 
 ```bash
@@ -40,9 +49,12 @@ npm i -g agent-browser && agent-browser install
 ## How It Works
 
 `webfetch` automatically:
-1. Tries `agent-browser` for HTML pages
-2. Extracts text from rendered DOM
-3. Falls back to static fetch with warning if browser unavailable
+1. Probes Content-Type via HEAD request
+2. Skips browser for binary types (PDF, ZIP, images, etc.)
+3. Tries `agent-browser` for HTML pages
+4. Extracts HTML → converts to markdown via turndown
+5. Falls back to text extraction if HTML quality is poor
+6. Falls back to static fetch with warning if browser unavailable
 
 ## Installation
 
@@ -64,11 +76,18 @@ npm install @rwese/pi-webfetch
 ## API
 
 ```typescript
-import { fetchUrl } from "@rwese/pi-webfetch";
+import { fetchUrl, downloadFile } from "@rwese/pi-webfetch";
 
+// Fetch URL
 const result = await fetchUrl("https://example.com");
 // result.content - Array of { type: "text", text: string }
 // result.details - { url, contentType, status, processedAs, browserWarning, ... }
+
+// Download file to specific path
+const download = await downloadFile("https://example.com/file.pdf", "/path/to/save.pdf");
+// download.success - boolean
+// download.size - file size in bytes
+// download.contentType - Content-Type header
 ```
 
 ## Development
