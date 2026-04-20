@@ -9,6 +9,7 @@ import {
 	extractMainContent,
 	isBrowserAvailable,
 	MAX_MARKDOWN_SIZE,
+	isLikelyBinaryUrl,
 } from "../extensions/index";
 
 describe("isTextContentType", () => {
@@ -201,5 +202,41 @@ describe("isBrowserAvailable", () => {
 describe("MAX_MARKDOWN_SIZE", () => {
 	it("is 100KB", () => {
 		expect(MAX_MARKDOWN_SIZE).toBe(100 * 1024);
+	});
+});
+
+describe("isLikelyBinaryUrl", () => {
+	it("returns true for PDF URLs", () => {
+		expect(isLikelyBinaryUrl("https://example.com/file.pdf")).toBe(true);
+		expect(isLikelyBinaryUrl("https://example.com/file.PDF")).toBe(true);
+	});
+
+	it("returns true for ZIP URLs", () => {
+		expect(isLikelyBinaryUrl("https://example.com/archive.zip")).toBe(true);
+	});
+
+	it("returns true for image URLs", () => {
+		expect(isLikelyBinaryUrl("https://example.com/image.png")).toBe(true);
+		expect(isLikelyBinaryUrl("https://example.com/image.jpg")).toBe(true);
+		expect(isLikelyBinaryUrl("https://example.com/image.gif")).toBe(true);
+	});
+
+	it("returns true for video/audio URLs", () => {
+		expect(isLikelyBinaryUrl("https://example.com/video.mp4")).toBe(true);
+		expect(isLikelyBinaryUrl("https://example.com/audio.mp3")).toBe(true);
+	});
+
+	it("returns false for HTML URLs", () => {
+		expect(isLikelyBinaryUrl("https://example.com/page.html")).toBe(false);
+		expect(isLikelyBinaryUrl("https://example.com/page")).toBe(false);
+	});
+
+	it("returns false for text URLs", () => {
+		expect(isLikelyBinaryUrl("https://example.com/readme.md")).toBe(false);
+		expect(isLikelyBinaryUrl("https://example.com/data.json")).toBe(false);
+	});
+
+	it("handles URLs with query parameters", () => {
+		expect(isLikelyBinaryUrl("https://example.com/file.pdf?token=abc")).toBe(true);
 	});
 });

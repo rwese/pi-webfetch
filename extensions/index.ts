@@ -19,6 +19,25 @@ import { Type } from "@sinclair/typebox";
 /** Maximum size for markdown content (100KB) */
 export const MAX_MARKDOWN_SIZE = 100 * 1024;
 
+/** Common binary file extensions */
+export const BINARY_EXTENSIONS = [
+	'.pdf', '.zip', '.gz', '.tar', '.rar', '.7z',
+	'.doc', '.docx', '.xls', '.xlsx', '.ppt', '.pptx',
+	'.png', '.jpg', '.jpeg', '.gif', '.bmp', '.ico', '.webp', '.svg',
+	'.mp3', '.mp4', '.avi', '.mov', '.wmv', '.flv', '.webm',
+	'.exe', '.dmg', '.pkg', '.deb', '.rpm', '.appimage',
+	'.ttf', '.otf', '.woff', '.woff2', '.eot',
+];
+
+/**
+ * Check if URL likely points to binary content based on extension
+ */
+export function isLikelyBinaryUrl(url: string): boolean {
+	// Strip query parameters and fragment before checking extension
+	const urlWithoutQuery = url.split(/[?#]/)[0].toLowerCase();
+	return BINARY_EXTENSIONS.some(ext => urlWithoutQuery.endsWith(ext));
+}
+
 /**
  * Detect if URL is a GitHub blob/file URL and return the raw URL
  */
@@ -391,7 +410,35 @@ function tryBrowserFetch(
 }
 
 /**
- * Main fetch function - tries browser first for HTML, falls back to static
+ * Get content-type header via HEAD request (with GET fallback)
+ * Returns null if unable to determine
+ */
+async function probeContentType(
+	url: string,
+	fetchFn: typeof fetch
+): Promise<string | null> {
+	try {
+		const response = await fetchFn(url, {
+			method: 'HEAD',
+			headers: { "User-Agent": "pi-webfetch/1.0" },
+		});
+		return response.headers.get("content-type");
+	} catch {
+		// HEAD might not be supported, try GET without body
+		try {
+			const response = await fetchFn(url, {
+				method: 'GET',
+				headers: { "User-Agent": "pi-webfetch/1.0" },
+			});
+			return response.headers.get("content-type");
+		} catch {
+			return null;
+		}
+	}
+}
+
+/**
+ * Main fetch function - probes content-type first, then uses appropriate method
  */
 export async function fetchUrl(
 	url: string,
@@ -406,7 +453,13 @@ export async function fetchUrl(
 	// For HTML pages, try browser first
 	let browserWarning: string | undefined;
 
-	if (!isGitHubRaw) {
+	// Determine if we should skip browser for this URL
+	const skipBrowser =
+		isGitHubRaw ||
+		isLikelyBinaryUrl(url) ||
+		isBinaryContentType(await probeContentType(fetchUrl, fetchFn));
+
+	if (!skipBrowser) {
 		const browserResult = tryBrowserFetch(url);
 		if (browserResult && browserResult.text) {
 			const text = browserResult.text;
@@ -532,16 +585,21 @@ export async function fetchUrl(
 		}
 	}
 
-	// Binary content
+	// Binary content - download to temp file
 	try {
 		const buffer = await response.arrayBuffer();
 		const data = Buffer.from(buffer);
 		const size = data.byteLength;
+		const extension = getExtensionFromContentType(contentType, url);
+		const tempPath = getTempFilePath("webfetch", extension);
+
+		const fs = await import("node:fs");
+		fs.writeFileSync(tempPath, data);
 
 		details = { url, contentType, status, processedAs: "binary", tempFileSize: size, browserWarning };
 
 		return {
-			content: [{ type: "text", text: buildFetchHeader(details) + `Downloaded binary file (${formatBytes(size)}, Content-Type: ${contentType || "unknown"})` }],
+			content: [{ type: "text", text: buildFetchHeader(details) + `Downloaded binary file to: ${tempPath}\nSize: ${formatBytes(size)}, Content-Type: ${contentType || "unknown"}` }],
 			details,
 		};
 	} catch (error) {
