@@ -318,6 +318,98 @@ export function convertToMarkdown(html: string): string {
 }
 
 /**
+ * Extract HTML from browser using agent-browser
+ */
+function extractHtmlFromBrowser(
+	url: string,
+	waitFor: string = 'networkidle',
+	timeout: number = 30000
+): { html: string; contentSource: string; warning?: string } | null {
+	if (!isBrowserAvailable()) {
+		return null;
+	}
+
+	try {
+		execFileSync('agent-browser', ['open', url], {
+			encoding: 'utf-8',
+			stdio: 'pipe',
+			timeout,
+		});
+
+		execFileSync('agent-browser', ['wait', '--load', waitFor], {
+			encoding: 'utf-8',
+			stdio: 'pipe',
+			timeout,
+		});
+
+		let html = '';
+		let contentSource = 'body';
+
+		// Try article first
+		try {
+			const articleHtml = execFileSync('agent-browser', ['get', 'html', 'article'], {
+				encoding: 'utf-8',
+				stdio: 'pipe',
+				timeout: 5000,
+			});
+			if (articleHtml && articleHtml.trim().length > 100) {
+				html = articleHtml;
+				contentSource = 'article';
+			}
+		} catch {
+			// Continue
+		}
+
+		// Try main
+		if (!html) {
+			try {
+				const mainHtml = execFileSync('agent-browser', ['get', 'html', 'main'], {
+					encoding: 'utf-8',
+					stdio: 'pipe',
+					timeout: 5000,
+				});
+				if (mainHtml && mainHtml.trim().length > 100) {
+					html = mainHtml;
+					contentSource = 'main';
+				}
+			} catch {
+				// Continue
+			}
+		}
+
+		// Fallback to body
+		if (!html || html.trim().length < 100) {
+			html = execFileSync('agent-browser', ['get', 'html', 'body'], {
+				encoding: 'utf-8',
+				stdio: 'pipe',
+				timeout,
+			});
+			contentSource = 'body';
+		}
+
+		try {
+			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
+		} catch {
+			// Ignore close errors
+		}
+
+		return {
+			html,
+			contentSource,
+			warning: contentSource === 'body' ? 'Content extracted from body (article/main not found)' : undefined,
+		};
+	} catch {
+		try {
+			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
+		} catch {
+			// Ignore
+		}
+
+		return null;
+	}
+}
+
+/**
  * Try to fetch URL using browser rendering (agent-browser)
  */
 function tryBrowserFetch(
@@ -460,12 +552,52 @@ export async function fetchUrl(
 		isBinaryContentType(await probeContentType(fetchUrl, fetchFn));
 
 	if (!skipBrowser) {
-		const browserResult = tryBrowserFetch(url);
-		if (browserResult && browserResult.text) {
-			const text = browserResult.text;
-			const originalSize = Buffer.byteLength(text, 'utf-8');
-			const truncated = Buffer.byteLength(text, 'utf-8') > maxMarkdownSize;
-			const finalText = truncateToSize(text, maxMarkdownSize);
+		// Try to get HTML from browser and convert to markdown
+		const htmlResult = extractHtmlFromBrowser(url);
+		if (htmlResult && htmlResult.html) {
+			// Browser already selected the content, just clean and convert
+			// Remove unwanted elements from browser HTML
+			const $ = load(htmlResult.html);
+			$('script, style, nav, footer, header, aside, .header, .footer, .sidebar, .navbar, .repo-header, .commit-placeholder').remove();
+			const cleanedHtml = $.html();
+
+			// Check if HTML content has good text ratio (not mostly scripts/styles)
+			const textContent = $.text();
+			const textRatio = textContent.length / Math.max(cleanedHtml.length, 1);
+
+			// If text ratio is too low, HTML extraction failed - fall back to text
+			if (textRatio < 0.05) {
+				browserWarning = 'HTML extraction failed, using text fallback';
+				const textResult = tryBrowserFetch(url);
+				if (textResult && textResult.text) {
+					const text = textResult.text;
+					const originalSize = Buffer.byteLength(text, 'utf-8');
+					const truncated = originalSize > maxMarkdownSize;
+					const finalText = truncateToSize(text, maxMarkdownSize);
+
+					details = {
+						url,
+						contentType: 'text/html',
+						status: 200,
+						processedAs: 'spa',
+						originalSize,
+						tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+						truncated,
+						extracted: true,
+						browserWarning,
+					};
+
+					return {
+						content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
+						details,
+					};
+				}
+			}
+
+			let markdown = convertToMarkdown(cleanedHtml);
+			const originalSize = Buffer.byteLength(markdown, 'utf-8');
+			const truncated = originalSize > maxMarkdownSize;
+			markdown = truncateToSize(markdown, maxMarkdownSize);
 
 			details = {
 				url,
@@ -473,18 +605,18 @@ export async function fetchUrl(
 				status: 200,
 				processedAs: 'spa',
 				originalSize,
-				tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+				tempFileSize: Buffer.byteLength(markdown, 'utf-8'),
 				truncated,
 				extracted: true,
-				browserWarning: browserResult.warning,
+				browserWarning: htmlResult.warning,
 			};
 
 			return {
-				content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
+				content: [{ type: "text", text: buildFetchHeader(details) + markdown }],
 				details,
 			};
 		}
-		browserWarning = browserResult?.warning;
+		browserWarning = 'agent-browser failed or not installed';
 	}
 
 	// Static HTTP fetch
