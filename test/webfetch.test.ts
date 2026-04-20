@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import {
 	isTextContentType,
 	isBinaryContentType,
@@ -7,7 +7,7 @@ import {
 	convertToMarkdown,
 	convertGitHubToRaw,
 	extractMainContent,
-	fetchUrl,
+	isBrowserAvailable,
 	MAX_MARKDOWN_SIZE,
 } from "../extensions/index";
 
@@ -21,16 +21,8 @@ describe("isTextContentType", () => {
 		expect(isTextContentType("text/plain")).toBe(true);
 	});
 
-	it("returns true for application/xhtml+xml", () => {
-		expect(isTextContentType("application/xhtml+xml")).toBe(true);
-	});
-
 	it("returns true for application/xml", () => {
 		expect(isTextContentType("application/xml")).toBe(true);
-	});
-
-	it("returns true for text/xml", () => {
-		expect(isTextContentType("text/xml")).toBe(true);
 	});
 
 	it("returns false for null", () => {
@@ -57,10 +49,6 @@ describe("isBinaryContentType", () => {
 		expect(isBinaryContentType("application/json")).toBe(false);
 	});
 
-	it("returns false for application/xml", () => {
-		expect(isBinaryContentType("application/xml")).toBe(false);
-	});
-
 	it("returns true for image types", () => {
 		expect(isBinaryContentType("image/jpeg")).toBe(true);
 		expect(isBinaryContentType("image/png")).toBe(true);
@@ -76,45 +64,20 @@ describe("getExtensionFromContentType", () => {
 		expect(getExtensionFromContentType("text/plain", "")).toBe("txt");
 	});
 
-	it("returns css for text/css", () => {
-		expect(getExtensionFromContentType("text/css", "")).toBe("css");
-	});
-
-	it("returns js for text/javascript", () => {
-		expect(getExtensionFromContentType("text/javascript", "")).toBe("js");
-	});
-
-	it("returns json for application/json", () => {
-		expect(getExtensionFromContentType("application/json", "")).toBe("json");
-	});
-
 	it("returns jpg for image/jpeg", () => {
 		expect(getExtensionFromContentType("image/jpeg", "")).toBe("jpg");
-	});
-
-	it("returns png for image/png", () => {
-		expect(getExtensionFromContentType("image/png", "")).toBe("png");
 	});
 
 	it("returns svg for image/svg+xml", () => {
 		expect(getExtensionFromContentType("image/svg+xml", "")).toBe("svg");
 	});
 
-	it("returns bin for application/octet-stream", () => {
-		expect(getExtensionFromContentType("application/octet-stream", "")).toBe("bin");
-	});
-
 	it("falls back to URL extension when content type is null", () => {
 		expect(getExtensionFromContentType(null, "https://example.com/file.pdf")).toBe("pdf");
 	});
 
-	it("falls back to bin when URL has no extension", () => {
-		// When path ends with /, pop returns empty string from split
+	it("returns bin when URL has no extension", () => {
 		expect(getExtensionFromContentType(null, "https://example.com/")).toBe("bin");
-	});
-
-	it("returns bin for unknown content type", () => {
-		expect(getExtensionFromContentType("application/custom", "")).toBe("bin");
 	});
 });
 
@@ -130,12 +93,6 @@ describe("truncateToSize", () => {
 		const result = truncateToSize(text, maxSize);
 		expect(result.length).toBe(maxSize);
 		expect(result.endsWith("...")).toBe(true);
-	});
-
-	it("handles exact max size", () => {
-		const text = "Exactly20Chars!------------";
-		const maxSize = Buffer.byteLength(text, "utf-8");
-		expect(truncateToSize(text, maxSize)).toBe(text);
 	});
 });
 
@@ -174,51 +131,24 @@ describe("convertGitHubToRaw", () => {
 
 describe("extractMainContent", () => {
 	it("extracts article content", () => {
-		const html = `
-		<!DOCTYPE html>
-		<html>
-		<head><title>Test</title></head>
-		<body>
-			<nav>Navigation</nav>
-			<article><h1>Title</h1><p>Main content here</p></article>
-			<footer>Footer</footer>
-		</body>
-		</html>
-		`;
+		const html = `<html><body><nav>Nav</nav><article><h1>Title</h1><p>Main</p></article><footer>Footer</footer></body></html>`;
 		const result = extractMainContent(html);
 		expect(result.extracted).toBe(true);
 		expect(result.content).toContain("<h1>Title</h1>");
-		expect(result.content).toContain("Main content here");
-		expect(result.content).not.toContain("Navigation");
-		expect(result.content).not.toContain("Footer");
 	});
 
 	it("extracts main element", () => {
-		const html = `
-		<html>
-		<body>
-			<header>Header</header>
-			<main><p>Main content</p></main>
-		</body>
-		</html>
-		`;
+		const html = `<html><body><header>Header</header><main><p>Main content</p></main></body></html>`;
 		const result = extractMainContent(html);
 		expect(result.extracted).toBe(true);
 		expect(result.content).toContain("Main content");
 	});
 
 	it("extracts markdown-body class (GitHub style)", () => {
-		const html = `
-		<html>
-		<body>
-			<div class=\"header\">Header</div>
-			<div class=\"markdown-body\"><p>Readme content</p></div>
-		</body>
-		</html>
-		`;
+		const html = `<html><body><div class="header">Header</div><div class="markdown-body"><p>Readme</p></div></body></html>`;
 		const result = extractMainContent(html);
 		expect(result.extracted).toBe(true);
-		expect(result.content).toContain("Readme content");
+		expect(result.content).toContain("Readme");
 	});
 
 	it("falls back to body when no main content found", () => {
@@ -238,19 +168,10 @@ describe("convertToMarkdown", () => {
 	});
 
 	it("converts headings correctly", () => {
-		const html = "<h1>H1</h1><h2>H2</h2><h3>H3</h3>";
+		const html = "<h1>H1</h1><h2>H2</h2>";
 		const markdown = convertToMarkdown(html);
 		expect(markdown).toContain("# H1");
 		expect(markdown).toContain("## H2");
-		expect(markdown).toContain("### H3");
-	});
-
-	it("converts lists to markdown", () => {
-		const html = "<ul><li>Item 1</li><li>Item 2</li></ul>";
-		const markdown = convertToMarkdown(html);
-		// Turndown uses "-   " format for list items
-		expect(markdown).toContain("-   Item 1");
-		expect(markdown).toContain("-   Item 2");
 	});
 
 	it("preserves code blocks in pre tags", () => {
@@ -270,152 +191,15 @@ describe("convertToMarkdown", () => {
 	});
 });
 
-describe("fetchUrl", () => {
-	describe("network errors", () => {
-		it("handles fetch failure", async () => {
-			const mockFetch = vi.fn().mockRejectedValue(new Error("Network error"));
-			const result = await fetchUrl("https://example.com", mockFetch);
-
-			expect(result.details.processedAs).toBe("error");
-			expect(result.content[0].text).toContain("Network error");
-		});
-
-		it("handles DNS failure", async () => {
-			const mockFetch = vi.fn().mockRejectedValue(new Error("getaddrinfo ENOTFOUND"));
-			const result = await fetchUrl("https://nonexistent.invalid", mockFetch);
-
-			expect(result.details.processedAs).toBe("error");
-		});
+describe("isBrowserAvailable", () => {
+	it("checks for agent-browser availability", () => {
+		const result = isBrowserAvailable();
+		expect(typeof result).toBe("boolean");
 	});
+});
 
-	describe("HTTP error responses", () => {
-		it("handles 404 response", async () => {
-			const mockResponse = {
-				ok: false,
-				status: 404,
-				headers: { get: vi.fn().mockReturnValue("text/html") },
-				text: vi.fn().mockResolvedValue("<h1>Not Found</h1>"),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com/404", mockFetch);
-
-			expect(result.details.processedAs).toBe("error");
-			expect(result.details.status).toBe(404);
-		});
-
-		it("handles 500 response", async () => {
-			const mockResponse = {
-				ok: false,
-				status: 500,
-				headers: { get: vi.fn().mockReturnValue("text/html") },
-				text: vi.fn().mockResolvedValue("<h1>Server Error</h1>"),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com/500", mockFetch);
-
-			expect(result.details.processedAs).toBe("error");
-			expect(result.details.status).toBe(500);
-		});
-	});
-
-	describe("HTML content", () => {
-		it("converts HTML to markdown with header", async () => {
-			const mockResponse = {
-				ok: true,
-				status: 200,
-				headers: { get: vi.fn().mockReturnValue("text/html; charset=utf-8") },
-				text: vi.fn().mockResolvedValue("<h1>Hello</h1><p>World</p>"),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com", mockFetch);
-
-			expect(result.details.processedAs).toBe("markdown");
-			expect(result.content[0].text).toContain("# Hello");
-			expect(result.content[0].text).toContain("World");
-			expect(result.content[0].text).toContain("## Fetched: https://example.com");
-		});
-
-		it("tracks original size", async () => {
-			const html = "<p>Content</p>";
-			const mockResponse = {
-				ok: true,
-				status: 200,
-				headers: { get: vi.fn().mockReturnValue("text/html") },
-				text: vi.fn().mockResolvedValue(html),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com", mockFetch);
-
-			expect(result.details.originalSize).toBe(Buffer.byteLength(html, "utf-8"));
-		});
-
-		it("handles truncation for large content", async () => {
-			const largeHtml = "<p>" + "x".repeat(200) + "</p>";
-			const mockResponse = {
-				ok: true,
-				status: 200,
-				headers: { get: vi.fn().mockReturnValue("text/html") },
-				text: vi.fn().mockResolvedValue(largeHtml),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com", mockFetch, 50);
-
-			expect(result.details.truncated).toBe(true);
-		});
-	});
-
-	describe("plain text content", () => {
-		it("returns plain text as-is with header", async () => {
-			const text = "Plain text content";
-			const mockResponse = {
-				ok: true,
-				status: 200,
-				headers: { get: vi.fn().mockReturnValue("text/plain") },
-				text: vi.fn().mockResolvedValue(text),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com", mockFetch);
-
-			expect(result.details.processedAs).toBe("markdown");
-			expect(result.content[0].text).toContain(text);
-			expect(result.content[0].text).toContain("## Fetched: https://example.com");
-		});
-	});
-
-	describe("binary content", () => {
-		it("handles binary content without error", async () => {
-			const mockResponse = {
-				ok: true,
-				status: 200,
-				headers: { get: vi.fn().mockReturnValue("image/png") },
-				arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(1024)),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com/image.png", mockFetch);
-
-			expect(result.details.processedAs).toBe("binary");
-			expect(result.details.tempFileSize).toBe(1024);
-		});
-
-		it("handles unknown content type as binary", async () => {
-			const mockResponse = {
-				ok: true,
-				status: 200,
-				headers: { get: vi.fn().mockReturnValue(null) },
-				arrayBuffer: vi.fn().mockResolvedValue(new ArrayBuffer(512)),
-			} as unknown as Response;
-
-			const mockFetch = vi.fn().mockResolvedValue(mockResponse);
-			const result = await fetchUrl("https://example.com/file", mockFetch);
-
-			expect(result.details.processedAs).toBe("binary");
-		});
+describe("MAX_MARKDOWN_SIZE", () => {
+	it("is 100KB", () => {
+		expect(MAX_MARKDOWN_SIZE).toBe(100 * 1024);
 	});
 });

@@ -2,16 +2,15 @@
  * pi-webfetch Extension
  *
  * Fetches remote resources (URLs) and processes them based on content type:
- * - Text/HTML: Converts to Markdown, stores in temp file
- * - Binary files: Downloads to temp directory
- *
- * Usage:
- *   Call the `webfetch` tool with a URL to fetch and process the resource
+ * - HTML: Browser rendering via agent-browser (falls back to static with warning)
+ * - Text: Returned as-is
+ * - Binary: Downloaded to temp directory
  */
 
 import { randomBytes } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import { load } from "cheerio";
 import TurndownService from "turndown";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
@@ -22,7 +21,6 @@ export const MAX_MARKDOWN_SIZE = 100 * 1024;
 
 /**
  * Detect if URL is a GitHub blob/file URL and return the raw URL
- * github.com/user/repo/blob/branch/path → raw.githubusercontent.com/user/repo/branch/path
  */
 export function convertGitHubToRaw(url: string): { rawUrl: string; isGitHubRaw: boolean } {
 	const githubBlobMatch = url.match(
@@ -41,44 +39,28 @@ export function convertGitHubToRaw(url: string): { rawUrl: string; isGitHubRaw: 
 
 /**
  * Extract main content from HTML using cheerio
- * Prioritizes: <article>, <main>, <div role="main">, .markdown-body, .content
- * Falls back to full HTML if no main content found
  */
 export function extractMainContent(html: string): { content: string; extracted: boolean } {
 	const $ = load(html);
 
-	// Remove noise: scripts, styles, nav, footer, headers
 	$('script, style, nav, footer, header, aside, .header, .footer, .sidebar, .navbar, .repo-header, .commit-placeholder').remove();
 
-	// Try to find main content in order of preference
 	const contentSelectors = [
-		'article',
-		'main',
-		'[role="main"]',
-		'.markdown-body',
-		'.file-content',
-		'.file-body',
-		'.content',
-		'#content',
-		'.article-content',
-		'.post-content',
-		'.entry-content',
-		'#readme',
-		'.readme',
+		'article', 'main', '[role="main"]', '.markdown-body', '.file-content',
+		'.file-body', '.content', '#content', '.article-content', '.post-content',
+		'.entry-content', '#readme', '.readme',
 	];
 
 	for (const selector of contentSelectors) {
 		const $content = $(selector);
 		if ($content.length > 0) {
 			const text = $.html($content);
-			// Only use extracted content if it has substantial content
 			if (text.length > 500) {
 				return { content: text, extracted: true };
 			}
 		}
 	}
 
-	// No main content found, use body or full HTML
 	const $body = $('body');
 	if ($body.length > 0) {
 		return { content: $.html($body), extracted: true };
@@ -86,35 +68,93 @@ export function extractMainContent(html: string): { content: string; extracted: 
 	return { content: html, extracted: false };
 }
 
-export interface WebfetchDetails {
-	url: string;
-	contentType: string | null;
-	status: number;
-	processedAs: "markdown" | "binary" | "error";
-	tempFilePath?: string;
-	tempFileSize?: number;
-	truncated?: boolean;
-	originalSize?: number;
-	extracted?: boolean; // Whether main content was extracted from HTML
+/**
+ * Detect if a page is likely a JavaScript-heavy SPA
+ */
+export function detectLikelySPA(html: string): { likely: boolean; reason?: string; selector?: string } {
+	const $ = load(html);
+
+	const contentSelectors = [
+		{ sel: 'article', name: '<article>' },
+		{ sel: 'main', name: '<main>' },
+		{ sel: '[role="main"]', name: '[role="main"]' },
+		{ sel: '.article-content', name: '.article-content' },
+		{ sel: '.post-content', name: '.post-content' },
+		{ sel: '.content', name: '.content' },
+		{ sel: '#content', name: '#content' },
+		{ sel: '.thread-content', name: '.thread-content' },
+		{ sel: '#rce-thread-container', name: '#rce-thread-container' },
+	];
+
+	for (const { sel, name } of contentSelectors) {
+		const $el = $(sel);
+		if ($el.length > 0) {
+			const hasChildren = $el.children().length > 0;
+			const textContent = $el.text().trim();
+			const htmlContent = $.html($el);
+
+			if (hasChildren && textContent.length < 200 && htmlContent.length > 200) {
+				return {
+					likely: true,
+					reason: `${name} exists but content appears empty (${textContent.length} chars) despite having structure`,
+					selector: sel,
+				};
+			}
+
+			if (!hasChildren && textContent.length < 50) {
+				return {
+					likely: true,
+					reason: `${name} is empty - content likely requires JavaScript rendering`,
+					selector: sel,
+				};
+			}
+		}
+	}
+
+	const spaIndicators = [
+		{ pattern: /id=["']rce-/, reason: 'Google Support RCE container detected' },
+		{ pattern: /data-react/, reason: 'React data attributes detected' },
+		{ pattern: /data-vue/, reason: 'Vue data attributes detected' },
+		{ pattern: /__NEXT_DATA__/, reason: 'Next.js data block detected' },
+		{ pattern: /__NUXT__/, reason: 'Nuxt data block detected' },
+	];
+
+	for (const { pattern, reason } of spaIndicators) {
+		if (pattern.test(html)) {
+			return { likely: true, reason };
+		}
+	}
+
+	const $body = $('body');
+	if ($body.length > 0) {
+		const bodyText = $body.text().trim();
+		const bodyHtml = $.html($body);
+		if (bodyHtml.length > 50000 && bodyText.length < 500) {
+			return {
+				likely: true,
+				reason: `Page has large HTML structure (${bodyHtml.length} chars) but minimal text (${bodyText.length} chars)`,
+			};
+		}
+	}
+
+	return { likely: false };
 }
 
-export interface FetchOptions {
-	headers?: Record<string, string>;
-	signal?: AbortSignal;
+/**
+ * Check if agent-browser CLI is available
+ */
+export function isBrowserAvailable(): boolean {
+	try {
+		execFileSync('agent-browser', ['--version'], { encoding: 'utf-8', stdio: 'pipe' });
+		return true;
+	} catch {
+		return false;
+	}
 }
 
-export interface FetchResult {
-	content: Array<{ type: "text"; text: string }>;
-	details: WebfetchDetails;
-}
-
-/** Generate a unique temp file path */
-export function getTempFilePath(prefix: string, extension: string): string {
-	const id = randomBytes(8).toString("hex");
-	return join(tmpdir(), `${prefix}-${id}.${extension}`);
-}
-
-/** Determine if content type is text/markdown convertible */
+/**
+ * Determine if content type is text/markdown convertible
+ */
 export function isTextContentType(contentType: string | null): boolean {
 	if (!contentType) return false;
 	const ct = contentType.toLowerCase();
@@ -127,24 +167,26 @@ export function isTextContentType(contentType: string | null): boolean {
 	);
 }
 
-/** Determine if content type is binary (non-text) */
+/**
+ * Determine if content type is binary (non-text)
+ */
 export function isBinaryContentType(contentType: string | null): boolean {
-	if (!contentType) return true; // Default to binary if unknown
+	if (!contentType) return true;
 	const ct = contentType.toLowerCase();
-	// Text types we can handle
 	if (ct.includes("text/") || ct.includes("application/json") || ct.includes("application/xml")) {
 		return false;
 	}
 	return true;
 }
 
-/** Extract file extension from content type */
+/**
+ * Extract file extension from content type
+ */
 export function getExtensionFromContentType(contentType: string | null, url: string): string {
 	if (!contentType) {
-		// Try to get from URL
 		const urlPath = new URL(url).pathname;
 		const segments = urlPath.split("/");
-		const lastSegment = segments.pop() || segments.pop(); // Get last non-empty segment
+		const lastSegment = segments.pop() || segments.pop();
 		if (lastSegment && lastSegment.includes(".")) {
 			const ext = lastSegment.split(".").pop();
 			if (ext && ext.length < 10) return ext;
@@ -154,30 +196,41 @@ export function getExtensionFromContentType(contentType: string | null, url: str
 
 	const ct = contentType.toLowerCase();
 	const mimeToExt: Record<string, string> = {
-		"text/html": "html",
-		"text/plain": "txt",
-		"text/css": "css",
-		"text/javascript": "js",
-		"text/typescript": "ts",
-		"application/json": "json",
-		"application/xml": "xml",
-		"application/pdf": "pdf",
-		"image/jpeg": "jpg",
-		"image/png": "png",
-		"image/gif": "gif",
-		"image/webp": "webp",
-		"image/svg+xml": "svg",
-		"image/x-icon": "ico",
-		"application/zip": "zip",
-		"application/gzip": "gz",
-		"application/x-tar": "tar",
-		"application/octet-stream": "bin",
+		"text/html": "html", "text/plain": "txt", "text/css": "css",
+		"text/javascript": "js", "text/typescript": "ts", "application/json": "json",
+		"application/xml": "xml", "application/pdf": "pdf", "image/jpeg": "jpg",
+		"image/png": "png", "image/gif": "gif", "image/webp": "webp",
+		"image/svg+xml": "svg", "image/x-icon": "ico", "application/zip": "zip",
+		"application/gzip": "gz", "application/x-tar": "tar", "application/octet-stream": "bin",
 	};
 
 	for (const [mime, ext] of Object.entries(mimeToExt)) {
 		if (ct.includes(mime)) return ext;
 	}
 	return "bin";
+}
+
+export interface WebfetchDetails {
+	url: string;
+	contentType: string | null;
+	status: number;
+	processedAs: "markdown" | "binary" | "error" | "spa" | "fallback";
+	tempFileSize?: number;
+	truncated?: boolean;
+	originalSize?: number;
+	extracted?: boolean;
+	browserWarning?: string;
+}
+
+export interface FetchResult {
+	content: Array<{ type: "text"; text: string }>;
+	details: WebfetchDetails;
+}
+
+/** Generate a unique temp file path */
+export function getTempFilePath(prefix: string, extension: string): string {
+	const id = randomBytes(8).toString("hex");
+	return join(tmpdir(), `${prefix}-${id}.${extension}`);
 }
 
 /** Format bytes to human readable string */
@@ -199,17 +252,17 @@ function buildFetchHeader(details: WebfetchDetails): string {
 	if (details.originalSize !== undefined) {
 		lines.push(`- **Original size**: ${formatBytes(details.originalSize)}`);
 	}
-
 	if (details.tempFileSize !== undefined) {
 		lines.push(`- **Content size**: ${formatBytes(details.tempFileSize)}`);
 	}
-
 	if (details.truncated) {
 		lines.push(`- **Note**: Content truncated to ${formatBytes(MAX_MARKDOWN_SIZE)}`);
 	}
-
 	if (details.extracted) {
 		lines.push(`- **Content extracted**: Main content extracted from HTML`);
+	}
+	if (details.browserWarning) {
+		lines.push(`⚠️ **${details.browserWarning}**`);
 	}
 
 	lines.push("\n---\n");
@@ -220,8 +273,7 @@ function buildFetchHeader(details: WebfetchDetails): string {
 export function truncateToSize(text: string, maxSize: number): string {
 	const bytes = Buffer.byteLength(text, "utf-8");
 	if (bytes <= maxSize) return text;
-	// Truncate to maxSize bytes
-	const buffer = Buffer.alloc(maxSize - 3); // 3 for "..."
+	const buffer = Buffer.alloc(maxSize - 3);
 	buffer.write(text, 0, "utf-8");
 	return buffer.toString("utf-8") + "...";
 }
@@ -246,18 +298,144 @@ export function convertToMarkdown(html: string): string {
 	return td.turndown(html);
 }
 
+/**
+ * Try to fetch URL using browser rendering (agent-browser)
+ */
+function tryBrowserFetch(
+	url: string,
+	waitFor: string = 'networkidle',
+	timeout: number = 30000
+): { text: string; warning?: string } | null {
+	if (!isBrowserAvailable()) {
+		return { text: '', warning: 'agent-browser not installed. Install with: npm i -g agent-browser && agent-browser install' };
+	}
+
+	try {
+		execFileSync('agent-browser', ['open', url], {
+			encoding: 'utf-8',
+			stdio: 'pipe',
+			timeout,
+		});
+
+		execFileSync('agent-browser', ['wait', '--load', waitFor], {
+			encoding: 'utf-8',
+			stdio: 'pipe',
+			timeout,
+		});
+
+		let text = '';
+		let contentSource = 'body';
+
+		// Try article first
+		try {
+			const articleText = execFileSync('agent-browser', ['get', 'text', 'article'], {
+				encoding: 'utf-8',
+				stdio: 'pipe',
+				timeout: 5000,
+			});
+			if (articleText && articleText.trim().length > 100) {
+				text = articleText;
+				contentSource = 'article';
+			}
+		} catch {
+			// Continue
+		}
+
+		// Try main
+		if (!text) {
+			try {
+				const mainText = execFileSync('agent-browser', ['get', 'text', 'main'], {
+					encoding: 'utf-8',
+					stdio: 'pipe',
+					timeout: 5000,
+				});
+				if (mainText && mainText.trim().length > 100) {
+					text = mainText;
+					contentSource = 'main';
+				}
+			} catch {
+				// Continue
+			}
+		}
+
+		// Fallback to body
+		if (!text || text.trim().length < 100) {
+			text = execFileSync('agent-browser', ['get', 'text', 'body'], {
+				encoding: 'utf-8',
+				stdio: 'pipe',
+				timeout,
+			});
+			contentSource = 'body';
+		}
+
+		try {
+			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
+		} catch {
+			// Ignore close errors
+		}
+
+		return {
+			text,
+			warning: contentSource === 'body' ? 'Content extracted from body (article/main not found)' : undefined,
+		};
+	} catch (error) {
+		try {
+			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
+		} catch {
+			// Ignore
+		}
+
+		const message = error instanceof Error ? error.message : String(error);
+		return { text: '', warning: `agent-browser failed: ${message}` };
+	}
+}
+
+/**
+ * Main fetch function - tries browser first for HTML, falls back to static
+ */
 export async function fetchUrl(
 	url: string,
 	fetchFn: typeof fetch = fetch,
 	maxMarkdownSize: number = MAX_MARKDOWN_SIZE
 ): Promise<FetchResult> {
-	let response: Response;
 	let details: WebfetchDetails;
 
-	// Check if URL is a GitHub blob that should be fetched as raw
 	const { rawUrl, isGitHubRaw } = convertGitHubToRaw(url);
 	const fetchUrl = isGitHubRaw ? rawUrl : url;
 
+	// For HTML pages, try browser first
+	let browserWarning: string | undefined;
+
+	if (!isGitHubRaw) {
+		const browserResult = tryBrowserFetch(url);
+		if (browserResult && browserResult.text) {
+			const text = browserResult.text;
+			const originalSize = Buffer.byteLength(text, 'utf-8');
+			const truncated = Buffer.byteLength(text, 'utf-8') > maxMarkdownSize;
+			const finalText = truncateToSize(text, maxMarkdownSize);
+
+			details = {
+				url,
+				contentType: 'text/html',
+				status: 200,
+				processedAs: 'spa',
+				originalSize,
+				tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+				truncated,
+				extracted: true,
+				browserWarning: browserResult.warning,
+			};
+
+			return {
+				content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
+				details,
+			};
+		}
+		browserWarning = browserResult?.warning;
+	}
+
+	// Static HTTP fetch
+	let response: Response;
 	try {
 		response = await fetchFn(fetchUrl, {
 			headers: {
@@ -267,7 +445,7 @@ export async function fetchUrl(
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		details = { url, contentType: null, status: 0, processedAs: "error" };
+		details = { url, contentType: null, status: 0, processedAs: "error", browserWarning };
 		return {
 			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to fetch ${url}: ${message}` }],
 			details,
@@ -277,49 +455,67 @@ export async function fetchUrl(
 	const contentType = response.headers.get("content-type");
 	const status = response.status;
 
-	// Handle non-OK responses
 	if (!response.ok) {
-		details = { url, contentType, status, processedAs: "error" };
+		details = { url, contentType, status, processedAs: "error", browserWarning };
 		return {
 			content: [{ type: "text", text: buildFetchHeader(details) + `HTTP ${status} for ${url}` }],
 			details,
 		};
 	}
 
-	// Check if we should convert to markdown
-	if (isTextContentType(contentType) || isGitHubRaw) {
+	// GitHub raw or plain text - use as-is
+	if (isGitHubRaw || contentType?.includes("text/plain") || contentType?.includes("text/markdown")) {
+		try {
+			const text = await response.text();
+			const originalSize = Buffer.byteLength(text, 'utf-8');
+			const truncated = Buffer.byteLength(text, 'utf-8') > maxMarkdownSize;
+			const finalText = truncateToSize(text, maxMarkdownSize);
+
+			details = {
+				url,
+				contentType: isGitHubRaw ? "text/plain" : contentType,
+				status,
+				processedAs: "markdown",
+				originalSize,
+				tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+				truncated,
+				browserWarning,
+			};
+
+			return {
+				content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
+				details,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			details = { url, contentType, status, processedAs: "error", browserWarning };
+			return {
+				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${url}: ${message}` }],
+				details,
+			};
+		}
+	}
+
+	// HTML - static extraction fallback
+	if (contentType?.includes("text/html")) {
 		try {
 			const html = await response.text();
 			const originalSize = Buffer.byteLength(html, "utf-8");
-
-			let markdown: string;
-
-			// For GitHub raw URLs or plain text, use as-is
-			if (isGitHubRaw || contentType?.includes("text/plain") || contentType?.includes("text/markdown")) {
-				markdown = html;
-			} else if (contentType?.includes("text/html")) {
-				// For HTML, extract main content first
-				const { content: extractedHtml, extracted } = extractMainContent(html);
-				markdown = convertToMarkdown(extractedHtml);
-				if (extracted) {
-					details = { url, contentType, status, processedAs: "markdown", originalSize, extracted: true };
-				}
-			} else {
-				// Other text types - use as-is
-				markdown = html;
-			}
-
-			const truncated = Buffer.byteLength(markdown, "utf-8") > maxMarkdownSize;
+			const { content: extractedHtml, extracted } = extractMainContent(html);
+			let markdown = convertToMarkdown(extractedHtml);
+			const truncated = Buffer.byteLength(markdown, 'utf-8') > maxMarkdownSize;
 			markdown = truncateToSize(markdown, maxMarkdownSize);
 
 			details = {
 				url,
 				contentType,
 				status,
-				processedAs: "markdown",
-				tempFileSize: Buffer.byteLength(markdown, "utf-8"),
-				truncated,
+				processedAs: "fallback",
 				originalSize,
+				tempFileSize: Buffer.byteLength(markdown, 'utf-8'),
+				truncated,
+				extracted,
+				browserWarning: browserWarning || "Using static fetch (browser rendering not available or failed)",
 			};
 
 			return {
@@ -328,7 +524,7 @@ export async function fetchUrl(
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			details = { url, contentType, status, processedAs: "error" };
+			details = { url, contentType, status, processedAs: "error", browserWarning };
 			return {
 				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${url}: ${message}` }],
 				details,
@@ -336,40 +532,13 @@ export async function fetchUrl(
 		}
 	}
 
-	// For GitHub raw URLs that weren't detected as text (fallback)
-	if (isGitHubRaw) {
-		try {
-			const text = await response.text();
-			const originalSize = Buffer.byteLength(text, "utf-8");
-			const truncated = Buffer.byteLength(text, "utf-8") > maxMarkdownSize;
-			const finalText = truncateToSize(text, maxMarkdownSize);
-
-			details = {
-				url,
-				contentType: "text/plain",
-				status,
-				processedAs: "markdown",
-				tempFileSize: Buffer.byteLength(finalText, "utf-8"),
-				truncated,
-				originalSize,
-			};
-
-			return {
-				content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
-				details,
-			};
-		} catch {
-			// Fall through to binary handling
-		}
-	}
-
-	// Binary content - download to temp file
+	// Binary content
 	try {
 		const buffer = await response.arrayBuffer();
 		const data = Buffer.from(buffer);
 		const size = data.byteLength;
 
-		details = { url, contentType, status, processedAs: "binary", tempFileSize: size };
+		details = { url, contentType, status, processedAs: "binary", tempFileSize: size, browserWarning };
 
 		return {
 			content: [{ type: "text", text: buildFetchHeader(details) + `Downloaded binary file (${formatBytes(size)}, Content-Type: ${contentType || "unknown"})` }],
@@ -377,12 +546,66 @@ export async function fetchUrl(
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		details = { url, contentType, status, processedAs: "error" };
+		details = { url, contentType, status, processedAs: "error", browserWarning };
 		return {
 			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to download ${url}: ${message}` }],
 			details,
 		};
 	}
+}
+
+/**
+ * Explicit browser-based fetch for SPA pages
+ */
+export async function fetchUrlWithBrowser(
+	url: string,
+	waitFor: string = 'networkidle',
+	timeout: number = 30000
+): Promise<FetchResult> {
+	const browserResult = tryBrowserFetch(url, waitFor, timeout);
+
+	if (browserResult && browserResult.text) {
+		const text = browserResult.text;
+		const originalSize = Buffer.byteLength(text, 'utf-8');
+		const truncated = Buffer.byteLength(text, 'utf-8') > MAX_MARKDOWN_SIZE;
+		const finalText = truncateToSize(text, MAX_MARKDOWN_SIZE);
+
+		const details: WebfetchDetails = {
+			url,
+			contentType: 'text/html',
+			status: 200,
+			processedAs: 'spa',
+			originalSize,
+			tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+			truncated,
+			extracted: true,
+			browserWarning: browserResult.warning,
+		};
+
+		return {
+			content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
+			details,
+		};
+	}
+
+	const warning = browserResult?.warning || 'Unknown browser error';
+	const details: WebfetchDetails = {
+		url,
+		contentType: 'text/html',
+		status: 200,
+		processedAs: 'error',
+		browserWarning: warning,
+	};
+
+	return {
+		content: [{
+			type: "text",
+			text: buildFetchHeader(details) +
+				`Browser rendering failed.\n\n${warning}\n\n` +
+				'Install agent-browser: npm i -g agent-browser && agent-browser install'
+		}],
+		details,
+	};
 }
 
 export default function (pi: ExtensionAPI) {
@@ -391,9 +614,9 @@ export default function (pi: ExtensionAPI) {
 		label: "Web Fetch",
 		description:
 			"Fetch a remote URL and process its content. " +
-			"HTML/text content is converted to Markdown (truncated to 100KB). " +
-			"Binary files are downloaded to a temp directory. " +
-			"Returns content text and/or temp file path for the resource.",
+			"Uses browser rendering (agent-browser) for HTML pages when available. " +
+			"Falls back to static fetch with warning if browser is unavailable. " +
+			"Binary files are downloaded to temp directory.",
 		parameters: Type.Object({
 			url: Type.String({ description: "The URL to fetch" }),
 		}),
@@ -401,6 +624,30 @@ export default function (pi: ExtensionAPI) {
 		async execute(_toolCallId, params, _signal) {
 			const { url } = params;
 			return fetchUrl(url, fetch, MAX_MARKDOWN_SIZE);
+		},
+	});
+
+	pi.registerTool({
+		name: "webfetch-spa",
+		label: "Web Fetch (SPA)",
+		description:
+			"Explicitly fetch using browser rendering (agent-browser). " +
+			"For JavaScript-heavy pages like Reddit, Google Support, Twitter/X, Notion, etc. " +
+			"Requires: npm i -g agent-browser && agent-browser install",
+		parameters: Type.Object({
+			url: Type.String({ description: "The URL to fetch" }),
+			waitFor: Type.Optional(
+				Type.Union([
+					Type.Literal("networkidle"),
+					Type.Literal("domcontentloaded"),
+				])
+			),
+			timeout: Type.Optional(Type.Number()),
+		}),
+
+		async execute(_toolCallId, params, _signal) {
+			const { url, waitFor = "networkidle", timeout = 30000 } = params;
+			return fetchUrlWithBrowser(url, waitFor, timeout);
 		},
 	});
 }

@@ -1,7 +1,17 @@
 {
-  "name": "pi-webfetch",
-  "version": "0.0.1",
-  "private": true,
+  "name": "@rwese/pi-webfetch",
+  "version": "0.1.0",
+  "description": "Webfetch extension for pi coding agent",
+  "keywords": ["pi-package", "web", "fetch"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rwese/pi-webfetch"
+  },
+  "files": ["extensions", "README.md", "LICENSE"],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "private": false,
   "type": "module",
   "pi": {
     "extensions": [
@@ -17,7 +27,14 @@
     "lint": "eslint extensions/",
     "lint:fix": "eslint extensions/ --fix",
     "format": "prettier --write extensions/",
-    "validate": "npm run typecheck && npm run lint && npm run test"
+    "validate": "npm run typecheck && npm run lint && npm run test",
+    "typecheck": "tsc --noEmit",
+    "version:patch": "npm version patch -m 'chore: Bump patch version' && git push && git push --tags",
+    "version:minor": "npm version minor -m 'feat: Bump minor version' && git push && git push --tags",
+    "version:major": "npm version major -m 'BREAKING CHANGE: Major version bump' && git push && git push --tags",
+    "release:patch": "npm run validate && npm run version:patch && npm publish --access public",
+    "release:minor": "npm run validate && npm run version:minor && npm publish --access public",
+    "release:major": "npm run validate && npm run version:major && npm publish --access public"
   },
   "dependencies": {
     "cheerio": "^1.0.0",
