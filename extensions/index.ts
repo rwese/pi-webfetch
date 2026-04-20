@@ -868,56 +868,33 @@ export default function (pi: ExtensionAPI) {
 
 	// Register /webfetch:info command
 	pi.registerCommand("webfetch:info", {
-		description: "Show webfetch usage guide and available providers",
+		description: "Show webfetch provider status and installation",
 		handler: async (_args, ctx) => {
 			const providers = getProviderStatus();
 			const available = providers.filter(p => p.available);
 
 			const lines = [
-				"# 📡 webfetch Usage Guide",
+				"# 📡 webfetch Providers",
 				"",
-				"## Available Tools",
-				"",
-				"| Tool | Purpose | When to Use |",
-				"|------|---------|------------|",
-				"| `webfetch` | General URL fetch | Most pages, auto-detects best method |",
-				"| `webfetch-spa` | Browser rendering | JS-heavy pages (Reddit, Notion, etc.) |",
-				"| `download-file` | File download | PDFs, images, binaries |",
-				"",
-				"## Quick Reference",
-				"",
-				"```",
-				"/webfetch https://example.com/article",
-				"/webfetch-spa https://reddit.com/r/programming",
-				"/download-file https://example.com/file.pdf --destination ./file.pdf",
-				"```",
-				"",
-				"## Provider Status",
+				"## Status",
 				"",
 			];
 
 			for (const p of providers.sort((a, b) => b.priority - a.priority)) {
-				const status = p.available ? "✅" : "❌";
-				const installed = p.available ? "Available" : "Not installed";
-				const features = p.name === "default" ? "Basic HTML extraction" : "GitHub fast-path, Reddit RSS, rich metadata";
-				lines.push(`| ${p.name} | ${status} ${installed} | ${features} |`);
+				const status = p.available ? "✅ Installed" : "❌ Missing";
+				const features = p.name === "default" ? "agent-browser" : "clawfetch";
+				lines.push(`- **${p.name}** (${features}): ${status}`);
 			}
 
-			lines.push("", "## Recommendations", "", "### For Standard Pages", "Use `/webfetch` - it auto-selects the best method.", "", "### For JavaScript-Heavy Sites", "Use `/webfetch-spa`:", "- Reddit, Twitter/X", "- Notion, Figma", "- Google Docs, Sheets", "", "### For GitHub", "- `/webfetch` works with `clawfetch` provider", "- Get README content automatically", "", "### For Reddit", "- `/webfetch` with `clawfetch` uses RSS fast-path", "- Better formatting for threads", "", "## Installation", "```bash", "# Default (agent-browser)", "npm i -g agent-browser && agent-browser install", "", "# Alternative (clawfetch)", "npm install -g clawfetch", "```",
-			);
-
 			if (available.length === 0) {
-				lines.push("", "⚠️ **No browser providers installed!**", "Static fetch will be used for HTML pages.", "Install a provider above for better results.",
+				lines.push("", "## Installation", "", "```bash", "# agent-browser (default)", "npm i -g agent-browser && agent-browser install", "", "# clawfetch (with GitHub/Reddit fast-paths)", "npm install -g clawfetch", "```",
 				);
-			} else if (available.length === 1) {
-				lines.push("", `✅ **${available.length} provider available** - ${available[0].name}`);
+				lines.push("", "⚠️ No providers installed - HTML pages will use static fetch.");
 			} else {
-				lines.push("", `✅ **${available.length} providers available**`);
+				lines.push("", `✅ ${available.length} provider(s) ready`);
 			}
 
 			const message = lines.join("\n");
-
-			// Output the info message via notification
 			ctx.ui.notify(message, "info");
 		},
 	});
