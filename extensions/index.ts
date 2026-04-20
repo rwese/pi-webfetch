@@ -716,6 +716,32 @@ export function getProviderStatus(): { name: string; available: boolean; priorit
 }
 
 export default function (pi: ExtensionAPI) {
+	// Startup validation: check for available providers
+	const providerStatus = getProviderStatus();
+	const availableProviders = providerStatus.filter(p => p.available);
+
+	// Use type assertion for notify (exists in runtime but not in exported types)
+	const notify = (pi as unknown as { notify: (msg: string, type?: "info" | "warning" | "error") => void }).notify;
+
+	if (availableProviders.length === 0) {
+		// No providers installed - show warning notification
+		notify(
+			"⚠️ pi-webfetch: No browser providers installed. HTML pages will use static fetch.\n" +
+			"Install a provider:\n" +
+			"  npm i -g agent-browser && agent-browser install\n" +
+			"  npm install -g clawfetch\n" +
+			"Run 'webfetch-providers' to check status.",
+			"warning"
+		);
+	} else {
+		// Show info about available providers
+		const providerList = availableProviders.map(p => p.name).join(", ");
+		notify(
+			`✅ pi-webfetch: ${availableProviders.length} provider(s) available (${providerList})`,
+			"info"
+		);
+	}
+
 	pi.registerTool({
 		name: "webfetch",
 		label: "Web Fetch",
