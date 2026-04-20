@@ -2,9 +2,11 @@
  * pi-webfetch Extension
  *
  * Fetches remote resources (URLs) and processes them based on content type:
- * - HTML: Browser rendering via agent-browser (falls back to static with warning)
+ * - HTML: Browser rendering via providers (agent-browser, clawfetch)
  * - Text: Returned as-is
  * - Binary: Downloaded to temp directory
+ * 
+ * Uses a provider abstraction layer for flexible content extraction backends.
  */
 
 import { randomBytes } from "node:crypto";
@@ -15,6 +17,15 @@ import { load } from "cheerio";
 import TurndownService from "turndown";
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Type } from "@sinclair/typebox";
+
+import {
+  createProviderManager,
+  type ProviderManager,
+  type ProviderFetchResult,
+  type NoProviderResult,
+  type ProviderConfig,
+  type FetchConfig,
+} from "../src/providers";
 
 /** Maximum size for markdown content (100KB) */
 export const MAX_MARKDOWN_SIZE = 100 * 1024;
@@ -33,7 +44,6 @@ export const BINARY_EXTENSIONS = [
  * Check if URL likely points to binary content based on extension
  */
 export function isLikelyBinaryUrl(url: string): boolean {
-	// Strip query parameters and fragment before checking extension
 	const urlWithoutQuery = url.split(/[?#]/)[0].toLowerCase();
 	return BINARY_EXTENSIONS.some(ext => urlWithoutQuery.endsWith(ext));
 }
@@ -239,6 +249,8 @@ export interface WebfetchDetails {
 	originalSize?: number;
 	extracted?: boolean;
 	browserWarning?: string;
+	provider?: string;
+	extractionMethod?: string;
 }
 
 export interface FetchResult {
@@ -268,6 +280,12 @@ function buildFetchHeader(details: WebfetchDetails): string {
 		`- **Processed as**: ${details.processedAs}`,
 	];
 
+	if (details.provider) {
+		lines.push(`- **Provider**: ${details.provider}`);
+	}
+	if (details.extractionMethod) {
+		lines.push(`- **Extraction**: ${details.extractionMethod}`);
+	}
 	if (details.originalSize !== undefined) {
 		lines.push(`- **Original size**: ${formatBytes(details.originalSize)}`);
 	}
@@ -317,193 +335,21 @@ export function convertToMarkdown(html: string): string {
 	return td.turndown(html);
 }
 
-/**
- * Extract HTML from browser using agent-browser
- */
-function extractHtmlFromBrowser(
-	url: string,
-	waitFor: string = 'networkidle',
-	timeout: number = 30000
-): { html: string; contentSource: string; warning?: string } | null {
-	if (!isBrowserAvailable()) {
-		return null;
-	}
-
-	try {
-		execFileSync('agent-browser', ['open', url], {
-			encoding: 'utf-8',
-			stdio: 'pipe',
-			timeout,
-		});
-
-		execFileSync('agent-browser', ['wait', '--load', waitFor], {
-			encoding: 'utf-8',
-			stdio: 'pipe',
-			timeout,
-		});
-
-		let html = '';
-		let contentSource = 'body';
-
-		// Try article first
-		try {
-			const articleHtml = execFileSync('agent-browser', ['get', 'html', 'article'], {
-				encoding: 'utf-8',
-				stdio: 'pipe',
-				timeout: 5000,
-			});
-			if (articleHtml && articleHtml.trim().length > 100) {
-				html = articleHtml;
-				contentSource = 'article';
-			}
-		} catch {
-			// Continue
-		}
-
-		// Try main
-		if (!html) {
-			try {
-				const mainHtml = execFileSync('agent-browser', ['get', 'html', 'main'], {
-					encoding: 'utf-8',
-					stdio: 'pipe',
-					timeout: 5000,
-				});
-				if (mainHtml && mainHtml.trim().length > 100) {
-					html = mainHtml;
-					contentSource = 'main';
-				}
-			} catch {
-				// Continue
-			}
-		}
-
-		// Fallback to body
-		if (!html || html.trim().length < 100) {
-			html = execFileSync('agent-browser', ['get', 'html', 'body'], {
-				encoding: 'utf-8',
-				stdio: 'pipe',
-				timeout,
-			});
-			contentSource = 'body';
-		}
-
-		try {
-			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
-		} catch {
-			// Ignore close errors
-		}
-
-		return {
-			html,
-			contentSource,
-			warning: contentSource === 'body' ? 'Content extracted from body (article/main not found)' : undefined,
-		};
-	} catch {
-		try {
-			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
-		} catch {
-			// Ignore
-		}
-
-		return null;
-	}
-}
+// Lazy-initialized provider manager
+let providerManager: ProviderManager | null = null;
 
 /**
- * Try to fetch URL using browser rendering (agent-browser)
+ * Get or create the provider manager
  */
-function tryBrowserFetch(
-	url: string,
-	waitFor: string = 'networkidle',
-	timeout: number = 30000
-): { text: string; warning?: string } | null {
-	if (!isBrowserAvailable()) {
-		return { text: '', warning: 'agent-browser not installed. Install with: npm i -g agent-browser && agent-browser install' };
+export function getProviderManager(): ProviderManager {
+	if (!providerManager) {
+		providerManager = createProviderManager();
 	}
-
-	try {
-		execFileSync('agent-browser', ['open', url], {
-			encoding: 'utf-8',
-			stdio: 'pipe',
-			timeout,
-		});
-
-		execFileSync('agent-browser', ['wait', '--load', waitFor], {
-			encoding: 'utf-8',
-			stdio: 'pipe',
-			timeout,
-		});
-
-		let text = '';
-		let contentSource = 'body';
-
-		// Try article first
-		try {
-			const articleText = execFileSync('agent-browser', ['get', 'text', 'article'], {
-				encoding: 'utf-8',
-				stdio: 'pipe',
-				timeout: 5000,
-			});
-			if (articleText && articleText.trim().length > 100) {
-				text = articleText;
-				contentSource = 'article';
-			}
-		} catch {
-			// Continue
-		}
-
-		// Try main
-		if (!text) {
-			try {
-				const mainText = execFileSync('agent-browser', ['get', 'text', 'main'], {
-					encoding: 'utf-8',
-					stdio: 'pipe',
-					timeout: 5000,
-				});
-				if (mainText && mainText.trim().length > 100) {
-					text = mainText;
-					contentSource = 'main';
-				}
-			} catch {
-				// Continue
-			}
-		}
-
-		// Fallback to body
-		if (!text || text.trim().length < 100) {
-			text = execFileSync('agent-browser', ['get', 'text', 'body'], {
-				encoding: 'utf-8',
-				stdio: 'pipe',
-				timeout,
-			});
-			contentSource = 'body';
-		}
-
-		try {
-			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
-		} catch {
-			// Ignore close errors
-		}
-
-		return {
-			text,
-			warning: contentSource === 'body' ? 'Content extracted from body (article/main not found)' : undefined,
-		};
-	} catch (error) {
-		try {
-			execFileSync('agent-browser', ['close'], { encoding: 'utf-8', stdio: 'pipe' });
-		} catch {
-			// Ignore
-		}
-
-		const message = error instanceof Error ? error.message : String(error);
-		return { text: '', warning: `agent-browser failed: ${message}` };
-	}
+	return providerManager;
 }
 
 /**
  * Get content-type header via HEAD request (with GET fallback)
- * Returns null if unable to determine
  */
 async function probeContentType(
 	url: string,
@@ -516,7 +362,6 @@ async function probeContentType(
 		});
 		return response.headers.get("content-type");
 	} catch {
-		// HEAD might not be supported, try GET without body
 		try {
 			const response = await fetchFn(url, {
 				method: 'GET',
@@ -530,96 +375,83 @@ async function probeContentType(
 }
 
 /**
- * Main fetch function - probes content-type first, then uses appropriate method
+ * Main fetch function - uses provider system with static fallback
  */
 export async function fetchUrl(
 	url: string,
 	fetchFn: typeof fetch = fetch,
-	maxMarkdownSize: number = MAX_MARKDOWN_SIZE
+	maxMarkdownSize: number = MAX_MARKDOWN_SIZE,
+	options?: { provider?: string }
 ): Promise<FetchResult> {
-	let details: WebfetchDetails;
-
 	const { rawUrl, isGitHubRaw } = convertGitHubToRaw(url);
 	const fetchUrl = isGitHubRaw ? rawUrl : url;
 
-	// For HTML pages, try browser first
-	let browserWarning: string | undefined;
-
-	// Determine if we should skip browser for this URL
+	// Determine if we should skip browser-based fetch
 	const skipBrowser =
 		isGitHubRaw ||
 		isLikelyBinaryUrl(url) ||
 		isBinaryContentType(await probeContentType(fetchUrl, fetchFn));
 
+	// Try provider-based fetch for HTML pages
 	if (!skipBrowser) {
-		// Try to get HTML from browser and convert to markdown
-		const htmlResult = extractHtmlFromBrowser(url);
-		if (htmlResult && htmlResult.html) {
-			// Browser already selected the content, just clean and convert
-			// Remove unwanted elements from browser HTML
-			const $ = load(htmlResult.html);
-			$('script, style, nav, footer, header, aside, .header, .footer, .sidebar, .navbar, .repo-header, .commit-placeholder').remove();
-			const cleanedHtml = $.html();
+		const manager = getProviderManager();
+		const providerConfig: FetchConfig = {
+			timeout: 30000,
+			waitFor: "networkidle",
+		};
 
-			// Check if HTML content has good text ratio (not mostly scripts/styles)
-			const textContent = $.text();
-			const textRatio = textContent.length / Math.max(cleanedHtml.length, 1);
+		if (options?.provider) {
+			providerConfig.provider = options.provider;
+		}
 
-			// If text ratio is too low, HTML extraction failed - fall back to text
-			if (textRatio < 0.05) {
-				browserWarning = 'HTML extraction failed, using text fallback';
-				const textResult = tryBrowserFetch(url);
-				if (textResult && textResult.text) {
-					const text = textResult.text;
-					const originalSize = Buffer.byteLength(text, 'utf-8');
-					const truncated = originalSize > maxMarkdownSize;
-					const finalText = truncateToSize(text, maxMarkdownSize);
+		const providerResult = await manager.fetch(url, providerConfig);
 
-					details = {
-						url,
-						contentType: 'text/html',
-						status: 200,
-						processedAs: 'spa',
-						originalSize,
-						tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
-						truncated,
-						extracted: true,
-						browserWarning,
-					};
-
-					return {
-						content: [{ type: "text", text: buildFetchHeader(details) + finalText }],
-						details,
-					};
-				}
-			}
-
-			let markdown = convertToMarkdown(cleanedHtml);
-			const originalSize = Buffer.byteLength(markdown, 'utf-8');
+		if (providerResult && "content" in providerResult) {
+			const result = providerResult as ProviderFetchResult;
+			const originalSize = Buffer.byteLength(result.content, "utf-8");
 			const truncated = originalSize > maxMarkdownSize;
-			markdown = truncateToSize(markdown, maxMarkdownSize);
+			const content = truncateToSize(result.content, maxMarkdownSize);
 
-			details = {
+			const details: WebfetchDetails = {
 				url,
-				contentType: 'text/html',
-				status: 200,
-				processedAs: 'spa',
+				contentType: result.contentType,
+				status: result.status,
+				processedAs: "spa",
 				originalSize,
-				tempFileSize: Buffer.byteLength(markdown, 'utf-8'),
+				tempFileSize: Buffer.byteLength(content, "utf-8"),
 				truncated,
 				extracted: true,
-				browserWarning: htmlResult.warning,
+				provider: "provider",
+				extractionMethod: result.extractionMethod,
 			};
 
 			return {
-				content: [{ type: "text", text: buildFetchHeader(details) + markdown }],
+				content: [{ type: "text", text: buildFetchHeader(details) + content }],
 				details,
 			};
 		}
-		browserWarning = 'agent-browser failed or not installed';
+
+		// Provider failed - check if we have any available providers
+		if (!manager.hasAvailableProvider()) {
+			// No providers available - use static fetch
+			return await staticFetch(url, fetchUrl, fetchFn, isGitHubRaw, maxMarkdownSize);
+		}
 	}
 
-	// Static HTTP fetch
+	// Static HTTP fetch fallback
+	return await staticFetch(url, fetchUrl, fetchFn, isGitHubRaw, maxMarkdownSize);
+}
+
+/**
+ * Static HTTP fetch (no browser rendering)
+ */
+async function staticFetch(
+	originalUrl: string,
+	fetchUrl: string,
+	fetchFn: typeof fetch,
+	isGitHubRaw: boolean,
+	maxMarkdownSize: number
+): Promise<FetchResult> {
 	let response: Response;
 	try {
 		response = await fetchFn(fetchUrl, {
@@ -630,9 +462,15 @@ export async function fetchUrl(
 		});
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		details = { url, contentType: null, status: 0, processedAs: "error", browserWarning };
+		const details: WebfetchDetails = {
+			url: originalUrl,
+			contentType: null,
+			status: 0,
+			processedAs: "error",
+			browserWarning: "Static fetch failed",
+		};
 		return {
-			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to fetch ${url}: ${message}` }],
+			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to fetch ${originalUrl}: ${message}` }],
 			details,
 		};
 	}
@@ -641,9 +479,15 @@ export async function fetchUrl(
 	const status = response.status;
 
 	if (!response.ok) {
-		details = { url, contentType, status, processedAs: "error", browserWarning };
+		const details: WebfetchDetails = {
+			url: originalUrl,
+			contentType,
+			status,
+			processedAs: "error",
+			browserWarning: "Static fetch: HTTP error",
+		};
 		return {
-			content: [{ type: "text", text: buildFetchHeader(details) + `HTTP ${status} for ${url}` }],
+			content: [{ type: "text", text: buildFetchHeader(details) + `HTTP ${status} for ${originalUrl}` }],
 			details,
 		};
 	}
@@ -652,19 +496,19 @@ export async function fetchUrl(
 	if (isGitHubRaw || contentType?.includes("text/plain") || contentType?.includes("text/markdown")) {
 		try {
 			const text = await response.text();
-			const originalSize = Buffer.byteLength(text, 'utf-8');
-			const truncated = Buffer.byteLength(text, 'utf-8') > maxMarkdownSize;
+			const originalSize = Buffer.byteLength(text, "utf-8");
+			const truncated = originalSize > maxMarkdownSize;
 			const finalText = truncateToSize(text, maxMarkdownSize);
 
-			details = {
-				url,
+			const details: WebfetchDetails = {
+				url: originalUrl,
 				contentType: isGitHubRaw ? "text/plain" : contentType,
 				status,
 				processedAs: "markdown",
 				originalSize,
-				tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+				tempFileSize: Buffer.byteLength(finalText, "utf-8"),
 				truncated,
-				browserWarning,
+				browserWarning: "Using static fetch (provider unavailable)",
 			};
 
 			return {
@@ -673,9 +517,9 @@ export async function fetchUrl(
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			details = { url, contentType, status, processedAs: "error", browserWarning };
+			const details: WebfetchDetails = { url: originalUrl, contentType, status, processedAs: "error" };
 			return {
-				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${url}: ${message}` }],
+				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${originalUrl}: ${message}` }],
 				details,
 			};
 		}
@@ -688,19 +532,19 @@ export async function fetchUrl(
 			const originalSize = Buffer.byteLength(html, "utf-8");
 			const { content: extractedHtml, extracted } = extractMainContent(html);
 			let markdown = convertToMarkdown(extractedHtml);
-			const truncated = Buffer.byteLength(markdown, 'utf-8') > maxMarkdownSize;
+			const truncated = Buffer.byteLength(markdown, "utf-8") > maxMarkdownSize;
 			markdown = truncateToSize(markdown, maxMarkdownSize);
 
-			details = {
-				url,
+			const details: WebfetchDetails = {
+				url: originalUrl,
 				contentType,
 				status,
 				processedAs: "fallback",
 				originalSize,
-				tempFileSize: Buffer.byteLength(markdown, 'utf-8'),
+				tempFileSize: Buffer.byteLength(markdown, "utf-8"),
 				truncated,
 				extracted,
-				browserWarning: browserWarning || "Using static fetch (browser rendering not available or failed)",
+				browserWarning: "Using static fetch (no browser provider available)",
 			};
 
 			return {
@@ -709,9 +553,9 @@ export async function fetchUrl(
 			};
 		} catch (error) {
 			const message = error instanceof Error ? error.message : String(error);
-			details = { url, contentType, status, processedAs: "error", browserWarning };
+			const details: WebfetchDetails = { url: originalUrl, contentType, status, processedAs: "error" };
 			return {
-				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${url}: ${message}` }],
+				content: [{ type: "text", text: buildFetchHeader(details) + `Failed to process ${originalUrl}: ${message}` }],
 				details,
 			};
 		}
@@ -722,13 +566,20 @@ export async function fetchUrl(
 		const buffer = await response.arrayBuffer();
 		const data = Buffer.from(buffer);
 		const size = data.byteLength;
-		const extension = getExtensionFromContentType(contentType, url);
+		const extension = getExtensionFromContentType(contentType, originalUrl);
 		const tempPath = getTempFilePath("webfetch", extension);
 
 		const fs = await import("node:fs");
 		fs.writeFileSync(tempPath, data);
 
-		details = { url, contentType, status, processedAs: "binary", tempFileSize: size, browserWarning };
+		const details: WebfetchDetails = {
+			url: originalUrl,
+			contentType,
+			status,
+			processedAs: "binary",
+			tempFileSize: size,
+			browserWarning: "Binary file downloaded",
+		};
 
 		return {
 			content: [{ type: "text", text: buildFetchHeader(details) + `Downloaded binary file to: ${tempPath}\nSize: ${formatBytes(size)}, Content-Type: ${contentType || "unknown"}` }],
@@ -736,9 +587,9 @@ export async function fetchUrl(
 		};
 	} catch (error) {
 		const message = error instanceof Error ? error.message : String(error);
-		details = { url, contentType, status, processedAs: "error", browserWarning };
+		const details: WebfetchDetails = { url: originalUrl, contentType, status, processedAs: "error" };
 		return {
-			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to download ${url}: ${message}` }],
+			content: [{ type: "text", text: buildFetchHeader(details) + `Failed to download ${originalUrl}: ${message}` }],
 			details,
 		};
 	}
@@ -790,31 +641,39 @@ export async function downloadFile(
 }
 
 /**
- * Explicit browser-based fetch for SPA pages
+ * Explicit browser-based fetch for SPA pages using provider system
  */
 export async function fetchUrlWithBrowser(
 	url: string,
-	waitFor: string = 'networkidle',
+	waitFor: string = "networkidle",
 	timeout: number = 30000
 ): Promise<FetchResult> {
-	const browserResult = tryBrowserFetch(url, waitFor, timeout);
+	const manager = getProviderManager();
+	const config: ProviderConfig = {
+		timeout,
+		waitFor: waitFor as "networkidle" | "domcontentloaded",
+	};
 
-	if (browserResult && browserResult.text) {
-		const text = browserResult.text;
-		const originalSize = Buffer.byteLength(text, 'utf-8');
-		const truncated = Buffer.byteLength(text, 'utf-8') > MAX_MARKDOWN_SIZE;
+	const result = await manager.fetch(url, config);
+
+	if (result && "content" in result) {
+		const providerResult = result as ProviderFetchResult;
+		const text = providerResult.content;
+		const originalSize = Buffer.byteLength(text, "utf-8");
+		const truncated = originalSize > MAX_MARKDOWN_SIZE;
 		const finalText = truncateToSize(text, MAX_MARKDOWN_SIZE);
 
 		const details: WebfetchDetails = {
 			url,
-			contentType: 'text/html',
-			status: 200,
-			processedAs: 'spa',
+			contentType: providerResult.contentType,
+			status: providerResult.status,
+			processedAs: "spa",
 			originalSize,
-			tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
+			tempFileSize: Buffer.byteLength(finalText, "utf-8"),
 			truncated,
 			extracted: true,
-			browserWarning: browserResult.warning,
+			provider: "provider",
+			extractionMethod: providerResult.extractionMethod,
 		};
 
 		return {
@@ -823,24 +682,37 @@ export async function fetchUrlWithBrowser(
 		};
 	}
 
-	const warning = browserResult?.warning || 'Unknown browser error';
+	const errorResult = result as NoProviderResult;
 	const details: WebfetchDetails = {
 		url,
-		contentType: 'text/html',
+		contentType: "text/html",
 		status: 200,
-		processedAs: 'error',
-		browserWarning: warning,
+		processedAs: "error",
+		browserWarning: errorResult.error,
 	};
 
 	return {
 		content: [{
 			type: "text",
 			text: buildFetchHeader(details) +
-				`Browser rendering failed.\n\n${warning}\n\n` +
-				'Install agent-browser: npm i -g agent-browser && agent-browser install'
+				`Provider fetch failed.\n\nError: ${errorResult.error}\n\n` +
+				`Attempted providers: ${errorResult.attemptedProviders.join(", ") || "none"}\n\n` +
+				"Install a provider: npm i -g agent-browser  # or: npm install -g clawfetch"
 		}],
 		details,
 	};
+}
+
+/**
+ * Get status of all providers
+ */
+export function getProviderStatus(): { name: string; available: boolean; priority: number }[] {
+	const manager = getProviderManager();
+	return manager.getAll().map((p) => ({
+		name: p.name,
+		available: p.isAvailable(),
+		priority: p.priority,
+	}));
 }
 
 export default function (pi: ExtensionAPI) {
@@ -849,16 +721,22 @@ export default function (pi: ExtensionAPI) {
 		label: "Web Fetch",
 		description:
 			"Fetch a remote URL and process its content. " +
-			"Uses browser rendering (agent-browser) for HTML pages when available. " +
-			"Falls back to static fetch with warning if browser is unavailable. " +
+			"Uses provider system (agent-browser, clawfetch) for HTML pages. " +
+			"Falls back to static fetch if no provider available. " +
 			"Binary files are downloaded to temp directory.",
 		parameters: Type.Object({
 			url: Type.String({ description: "The URL to fetch" }),
+			provider: Type.Optional(
+				Type.Union([
+					Type.Literal("default"),
+					Type.Literal("clawfetch"),
+				])
+			),
 		}),
 
 		async execute(_toolCallId, params, _signal) {
-			const { url } = params;
-			return fetchUrl(url, fetch, MAX_MARKDOWN_SIZE);
+			const { url, provider } = params;
+			return fetchUrl(url, fetch, MAX_MARKDOWN_SIZE, { provider });
 		},
 	});
 
@@ -866,9 +744,9 @@ export default function (pi: ExtensionAPI) {
 		name: "webfetch-spa",
 		label: "Web Fetch (SPA)",
 		description:
-			"Explicitly fetch using browser rendering (agent-browser). " +
+			"Explicitly fetch using browser rendering via provider system. " +
 			"For JavaScript-heavy pages like Reddit, Google Support, Twitter/X, Notion, etc. " +
-			"Requires: npm i -g agent-browser && agent-browser install",
+			"Requires: npm i -g agent-browser  # or: npm install -g clawfetch",
 		parameters: Type.Object({
 			url: Type.String({ description: "The URL to fetch" }),
 			waitFor: Type.Optional(
@@ -920,6 +798,41 @@ export default function (pi: ExtensionAPI) {
 			return {
 				content: [{ type: "text", text: lines.join("\n") }],
 				details: result,
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: "webfetch-providers",
+		label: "Web Fetch Providers",
+		description:
+			"Get status of available web fetch providers (agent-browser, clawfetch).",
+		parameters: Type.Object({}),
+
+		async execute(_toolCallId, _params, _signal) {
+			const providers = getProviderStatus();
+			const lines = [
+				"## Web Fetch Providers",
+				"",
+				"| Provider | Available | Priority |",
+				"|----------|-----------|----------|",
+			];
+
+			for (const p of providers.sort((a, b) => b.priority - a.priority)) {
+				const status = p.available ? "✅ Available" : "❌ Not installed";
+				lines.push(`| ${p.name} | ${status} | ${p.priority} |`);
+			}
+
+			lines.push("");
+			lines.push("### Installation");
+			lines.push("```bash");
+			lines.push("npm i -g agent-browser && agent-browser install  # Default provider");
+			lines.push("npm install -g clawfetch                         # Alternative with fast-paths");
+			lines.push("```");
+
+			return {
+				content: [{ type: "text", text: lines.join("\n") }],
+				details: { providers },
 			};
 		},
 	});

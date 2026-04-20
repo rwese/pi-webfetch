@@ -1,33 +1,18 @@
-# pi-webfetch Extension
+# TODO: Add Clawfetch with Provider Abstraction
 
-## Tools
+## Tasks
 
-| Tool | Description |
-|------|-------------|
-| `webfetch` | Fetch URL, process content (HTML→markdown, binary→temp) |
-| `webfetch-spa` | Force browser rendering for JS-heavy pages |
-| `download-file` | Download file to specific destination |
+| # | Task | Status | Notes |
+|---|------|--------|-------|
+| 1 | Create provider interface types | [x] | |
+| 2 | Implement DefaultProvider | [x] | Refactor current agent-browser + turndown |
+| 3 | Implement ClawfetchProvider | [x] | Wrap clawfetch |
+| 4 | Create ProviderManager | [x] | Auto-detect + selection |
+| 5 | Add CLI override flag | [x] | --provider / env var |
+| 6 | Update extension registration | [x] | Use ProviderManager |
+| 7 | Add tests for providers | [x] | Unit tests |
+| 8 | Update AGENTS.md | [x] | Document new architecture |
 
-## Features
+## Progress
 
-### Binary Content Detection
-- Probes Content-Type via HEAD request before browser fetch
-- Skips browser for known binary types (PDF, ZIP, images, etc.)
-- Falls back to URL extension check
-
-### Hybrid Browser Extraction
-- Uses `get html` from browser → converts to markdown
-- Falls back to `get text` if HTML is poor quality (low text ratio)
-
-### Download File
-- Explicit download to user-specified destination
-- Returns success, size, content-type
-
-## Test Results
-
-| URL | Content Type | Method | Result |
-|-----|--------------|--------|--------|
-| Google Support | HTML with `<article>` | Markdown | ✅ Preserves headings, lists |
-| MiniMax | SPA, no semantic elements | Text fallback | ✅ Clean text |
-| NextCloud PDF | Binary PDF | Binary download | ✅ Saved to temp |
-| PDF (download-file) | Binary PDF | Explicit download | ✅ Saved to `/tmp/test.pdf` |
+- [2026-04-20] Started implementation
