@@ -12,6 +12,7 @@ import {
   type NoProviderResult,
   type ProviderConfig,
   type FetchConfig,
+  type URLDetection,
   ProviderError,
 } from "./types";
 import { DefaultProvider } from "./default";
@@ -233,6 +234,22 @@ export class ProviderManager {
     }
   }
   
+  /**
+   * Detect URL type using the first available provider
+   */
+  detectUrl(url: string): URLDetection {
+    const available = this.getAvailableProviders();
+    if (available.length === 0) {
+      return {
+        isGitHub: false,
+        isReddit: false,
+        isLikelySPA: false,
+        isLikelyBinary: false,
+      };
+    }
+    return available[0].detectUrl(url);
+  }
+
   /**
    * Close all providers (cleanup resources)
    */

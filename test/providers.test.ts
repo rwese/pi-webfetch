@@ -109,6 +109,51 @@ describe("ProviderManager", () => {
     manager = createProviderManager();
   });
 
+  describe("detectUrl", () => {
+    it("delegates to available provider", () => {
+      const detection = manager.detectUrl("https://github.com/user/repo");
+      // Should delegate to default provider
+      expect(detection).toBeDefined();
+      expect(typeof detection.isGitHub).toBe("boolean");
+      expect(typeof detection.isReddit).toBe("boolean");
+      expect(typeof detection.isLikelySPA).toBe("boolean");
+      expect(typeof detection.isLikelyBinary).toBe("boolean");
+    });
+
+    it("detects GitHub URLs", () => {
+      const detection = manager.detectUrl("https://github.com/user/repo");
+      expect(detection.isGitHub).toBe(true);
+    });
+
+    it("detects Reddit URLs", () => {
+      const detection = manager.detectUrl("https://www.reddit.com/r/programming");
+      expect(detection.isReddit).toBe(true);
+    });
+
+    it("detects binary URLs", () => {
+      const detection = manager.detectUrl("https://example.com/file.pdf");
+      expect(detection.isLikelyBinary).toBe(true);
+    });
+
+    it("detects SPAs", () => {
+      const detection = manager.detectUrl("https://notion.so/workspace");
+      expect(detection.isLikelySPA).toBe(true);
+    });
+
+    it("returns safe defaults when no providers available", () => {
+      // Create manager with no enabled providers
+      const emptyManager = createProviderManager({
+        enabledProviders: ["nonexistent"],
+      });
+      const detection = emptyManager.detectUrl("https://example.com");
+      
+      expect(detection.isGitHub).toBe(false);
+      expect(detection.isReddit).toBe(false);
+      expect(detection.isLikelySPA).toBe(false);
+      expect(detection.isLikelyBinary).toBe(false);
+    });
+  });
+
   it("registers providers", () => {
     const providers = manager.getAll();
     expect(providers.length).toBeGreaterThanOrEqual(2);
@@ -209,5 +254,63 @@ describe("Provider error handling", () => {
     
     expect(result).toBeDefined();
     expect("success" in result || "content" in result).toBe(true);
+  });
+});
+
+describe("ProviderManager detectUrl method", () => {
+  it("manager has detectUrl method", () => {
+    const manager = createProviderManager();
+    expect(typeof manager.detectUrl).toBe("function");
+  });
+
+  it("detectUrl returns URLDetection type", () => {
+    const manager = createProviderManager();
+    const result = manager.detectUrl("https://example.com");
+    
+    expect(result).toHaveProperty("isGitHub");
+    expect(result).toHaveProperty("isReddit");
+    expect(result).toHaveProperty("isLikelySPA");
+    expect(result).toHaveProperty("isLikelyBinary");
+  });
+
+  it("detectUrl works with all URL types", () => {
+    const manager = createProviderManager();
+    
+    const testCases = [
+      { url: "https://github.com/user/repo", expected: { isGitHub: true } },
+      { url: "https://reddit.com/r/test", expected: { isReddit: true } },
+      { url: "https://example.com/file.pdf", expected: { isLikelyBinary: true } },
+      { url: "https://notion.so/workspace", expected: { isLikelySPA: true } },
+    ];
+    
+    for (const tc of testCases) {
+      const result = manager.detectUrl(tc.url);
+      for (const [key, value] of Object.entries(tc.expected)) {
+        expect(result[key as keyof typeof result]).toBe(value);
+      }
+    }
+  });
+
+  it("detectUrl uses first available provider", () => {
+    const manager = createProviderManager();
+    
+    // Get what the first provider detects
+    const firstProvider = manager.getAvailableProviders()[0];
+    const providerResult = firstProvider.detectUrl("https://github.com/user/repo");
+    
+    // Manager should delegate to first provider
+    const managerResult = manager.detectUrl("https://github.com/user/repo");
+    
+    expect(managerResult.isGitHub).toBe(providerResult.isGitHub);
+  });
+
+  it("detectUrl returns safe defaults when no providers", () => {
+    const emptyManager = createProviderManager({ enabledProviders: ["nonexistent"] });
+    const result = emptyManager.detectUrl("https://example.com");
+    
+    expect(result.isGitHub).toBe(false);
+    expect(result.isReddit).toBe(false);
+    expect(result.isLikelySPA).toBe(false);
+    expect(result.isLikelyBinary).toBe(false);
   });
 });
