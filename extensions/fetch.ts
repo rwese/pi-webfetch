@@ -50,7 +50,7 @@ function buildFetchHeader(details: WebfetchDetails): string {
 	if (details.browserWarning) lines.push(`\n> ⚠️ ${details.browserWarning}`);
 	if (details.truncated) lines.push(`\n> ⚠️ Content truncated to ${formatBytes(MAX_MARKDOWN_SIZE)}`);
 
-	return lines.join('\n') + '\n\n---\n\n';
+	return lines.join('\n') + '\n\n<!-- -->\n\n';
 }
 
 // ============================================================================
@@ -72,7 +72,16 @@ export async function fetchUrl(
 	const manager = await getProviderManager();
 	const detection = manager.detectUrl(url);
 
-	if (detection.type !== 'unknown' || provider) {
+	// Check if URL is a raw GitHub URL (should use static fetch, not provider)
+	const hostname = new URL(url).hostname.toLowerCase();
+	const isRawGitHubUrl = hostname === 'raw.githubusercontent.com';
+
+	// Use detection flags to determine if provider should be used
+	// Provider is used for GitHub web URLs, Reddit URLs, or SPAs
+	// Raw GitHub URLs should use static fetch directly
+	const shouldUseProvider = (detection.isGitHub && !isRawGitHubUrl) || detection.isReddit || detection.isLikelySPA || !!provider;
+
+	if (shouldUseProvider) {
 		const config: ProviderConfig = { forceProvider: provider };
 		const providerResult = await manager.fetch(url, config);
 

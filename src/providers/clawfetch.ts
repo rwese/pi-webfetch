@@ -95,10 +95,15 @@ export class ClawfetchProvider implements WebfetchProvider {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     
+    // GitHub URLs include both web interface and raw content URLs
+    const isGitHubHost = hostname === "github.com" || 
+                         hostname === "www.github.com" || 
+                         hostname === "raw.githubusercontent.com";
+    
     return {
-      isGitHub: hostname === "github.com" || hostname === "www.github.com",
+      isGitHub: isGitHubHost,
       isReddit: hostname.includes(".reddit.com") || hostname === "reddit.com",
-      isLikelySPA: this.checkLikelySPA(url),
+      isLikelySPA: isGitHubHost ? false : this.checkLikelySPA(url), // Raw URLs are not SPAs
       isLikelyBinary: this.checkLikelyBinary(url),
     };
   }

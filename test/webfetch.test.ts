@@ -131,6 +131,16 @@ describe('convertGitHubToRaw', () => {
 		expect(result.rawUrl).toBe('https://github.com/user/repo');
 		expect(result.isGitHubRaw).toBe(false);
 	});
+
+	it('recognizes raw.githubusercontent.com URLs as GitHub raw', () => {
+		const result = convertGitHubToRaw(
+			'https://raw.githubusercontent.com/nix-community/disko/master/lib/types/gpt.nix',
+		);
+		expect(result.rawUrl).toBe(
+			'https://raw.githubusercontent.com/nix-community/disko/master/lib/types/gpt.nix',
+		);
+		expect(result.isGitHubRaw).toBe(true);
+	});
 });
 
 describe('extractMainContent', () => {

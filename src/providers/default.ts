@@ -64,10 +64,15 @@ export class DefaultProvider implements WebfetchProvider {
   detectUrl(url: string): URLDetection {
     const hostname = new URL(url).hostname.toLowerCase();
     
+    // GitHub URLs include both web interface and raw content URLs
+    const isGitHubHost = hostname === "github.com" || 
+                         hostname === "www.github.com" || 
+                         hostname === "raw.githubusercontent.com";
+    
     return {
-      isGitHub: hostname === "github.com" || hostname === "www.github.com",
+      isGitHub: isGitHubHost,
       isReddit: hostname.includes(".reddit.com") || hostname === "reddit.com",
-      isLikelySPA: this.checkLikelySPA(url),
+      isLikelySPA: isGitHubHost ? false : this.checkLikelySPA(url), // Raw URLs are not SPAs
       isLikelyBinary: this.isLikelyBinaryUrl(url),
     };
   }
@@ -105,18 +110,22 @@ export class DefaultProvider implements WebfetchProvider {
       // If text ratio is too low, fallback to plain text
       let content: string;
       let extractionMethod: string;
+      let reportedContentType: string;
       
       if (textRatio < 0.05) {
         // Fallback: get plain text from browser
         const textResult = await this.extractTextFromBrowser(url, waitFor, timeout);
         content = textResult;
         extractionMethod = "browser-text-fallback";
+        // Low text ratio suggests plain text content (like raw GitHub files)
+        reportedContentType = "text/plain";
       } else {
         // Convert HTML to markdown
         content = this.convertToMarkdown($.html());
         extractionMethod = htmlResult.contentSource === "body" 
           ? "browser-html-body" 
           : `browser-html-${htmlResult.contentSource}`;
+        reportedContentType = "text/html";
       }
       
       return {
@@ -126,7 +135,7 @@ export class DefaultProvider implements WebfetchProvider {
         },
         finalUrl: url,
         status: 200,
-        contentType: "text/html",
+        contentType: reportedContentType,
         extractionMethod,
         fallbackSelector: htmlResult.contentSource === "body" ? "body" : undefined,
       };

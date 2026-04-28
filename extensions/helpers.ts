@@ -36,6 +36,11 @@ export function isLikelyBinaryUrl(url: string): boolean {
 
 /** Convert GitHub blob URL to raw URL */
 export function convertGitHubToRaw(url: string): { rawUrl: string; isGitHubRaw: boolean } {
+	// Already a raw.githubusercontent.com URL
+	if (url.includes('raw.githubusercontent.com')) {
+		return { rawUrl: url, isGitHubRaw: true };
+	}
+	
 	const blobMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
 	if (blobMatch) {
 		const [, owner, repo, branch, path] = blobMatch;
