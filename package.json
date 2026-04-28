@@ -1,6 +1,6 @@
 {
 	"name": "@rwese/pi-webfetch",
-	"version": "0.1.0",
+	"version": "0.2.0",
 	"description": "Webfetch extension for pi coding agent",
 	"keywords": [
 		"pi-package",
