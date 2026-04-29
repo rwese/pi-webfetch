@@ -85,10 +85,10 @@ Added `test/provider-fallback.test.ts` with comprehensive fallback chain tests.
 - [x] Add Wikipedia test case (Apollo 11 article)
 
 **Phase 3: Edge Cases**
-- [ ] Add Reddit Post test case
-- [ ] Add SPA test case
-- [ ] Add 404 handling test case
-- [ ] Add raw file download test case
+- [x] Add 404 handling test case
+- [x] Add SPA test case (Hacker News via clawfetch)
+- [x] Add raw file download test case
+- [ ] Add Reddit Post test case (Reddit blocking requests)
 
 ---
 
