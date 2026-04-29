@@ -32,6 +32,9 @@
 		"test": "vitest run",
 		"test:coverage": "vitest run --coverage",
 		"test:watch": "vitest",
+		"test:regression": "vitest run test/cases/run-regression.test.ts",
+		"test:regression:watch": "vitest test/cases/run-regression.test.ts",
+		"report-url": "tsx test/report-url.ts",
 		"lint": "eslint extensions/",
 		"lint:fix": "eslint extensions/ --fix",
 		"format": "prettier --write extensions/",
@@ -66,6 +69,7 @@
 		"husky": "^9.1.7",
 		"lint-staged": "^16.4.0",
 		"prettier": "^3.4.0",
+		"tsx": "^4.21.0",
 		"typescript": "^5.8.0",
 		"vitest": "^4.1.4"
 	},
