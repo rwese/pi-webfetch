@@ -7,8 +7,6 @@
  */
 
 import type { ChildProcess } from 'node:child_process';
-import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { cwd, env } from 'node:process';
 
 export interface SpawnPiAgentOptions {
@@ -81,13 +79,14 @@ export async function spawnPiAgent(
 	return new Promise((resolve, reject) => {
 		const piPath = findPiExecutable();
 
-		// Build the system prompt for research mode
-		const systemPrompt = join(homedir(), '.pi', 'agent', 'AGENTS.md');
-		const researchPrompt = `Research Question: ${query}\n\nContent to analyze:\n${content}`;
+		// Build the full prompt: research question + content to analyze
+		const prompt = `${query}\n\nContent to analyze:\n${content}`;
 
+		// Spawn pi with -p flag passing the prompt directly
+		// stdout will contain the analysis result
 		const proc: ChildProcess = spawn(
 			piPath,
-			['--mode', 'json', '-p', '--no-session', '--append-system-prompt', systemPrompt],
+			['-p', prompt],
 			{
 				stdio: ['ignore', 'pipe', 'pipe'],
 				cwd: cwdOption,
@@ -105,12 +104,12 @@ export async function spawnPiAgent(
 			reject(new PiAgentError(`Pi agent timed out after ${timeout}ms`, null));
 		}, timeout);
 
-		// Collect stdout
+		// Collect stdout - this is the analysis result
 		proc.stdout?.on('data', (data: Buffer) => {
 			stdout += data.toString();
 		});
 
-		// Collect stderr
+		// Collect stderr for error reporting
 		proc.stderr?.on('data', (data: Buffer) => {
 			stderr += data.toString();
 		});
@@ -134,10 +133,6 @@ export async function spawnPiAgent(
 			clearTimeout(timeoutHandle);
 			reject(new PiAgentError(`Failed to spawn pi: ${err.message}`, null, err.message));
 		});
-
-		// Write the research prompt to stdin
-		proc.stdin?.write(researchPrompt);
-		proc.stdin?.end();
 	});
 }
 
