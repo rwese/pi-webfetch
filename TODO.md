@@ -37,12 +37,19 @@ npx vitest run test/gh-cli-provider.test.ts --grep "integration"
 ```
 
 ### 3. Add Integration Test for Provider Fallback Chain
-**Status:** ⬜ Pending
+**Status:** ✅ DONE
 
-- [ ] Mock DefaultProvider to always fail
-- [ ] Verify ClawfetchProvider is attempted as fallback
-- [ ] Verify error is returned if all providers fail
-- [ ] Test fallback preserves error info from all attempts
+- [x] Mock providers with vi.fn() for fetch behavior
+- [x] Test single provider success path
+- [x] Test fallback chain when primary fails
+- [x] Test error preservation when all providers fail
+- [x] Test unavailable provider handling
+- [x] Test forced provider selection
+- [x] Test config option provider selection
+- [x] Test provider priority ordering
+- [x] Test closeAll cleanup
+
+Added `test/provider-fallback.test.ts` with comprehensive fallback chain tests.
 
 ---
 
