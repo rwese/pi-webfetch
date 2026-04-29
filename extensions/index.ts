@@ -16,8 +16,14 @@ export type {
 } from './types.js';
 
 // Fetch functions
-import { fetchUrl, webfetchSPA, downloadFile, getProviderStatus } from './fetch.js';
-export { fetchUrl, webfetchSPA, downloadFile, getProviderStatus };
+import {
+	fetchUrl,
+	webfetchSPA,
+	downloadFile,
+	getProviderStatus,
+	webfetchResearch,
+} from './fetch.js';
+export { fetchUrl, webfetchSPA, downloadFile, getProviderStatus, webfetchResearch };
 
 // HTML utilities
 export { extractMainContent, detectLikelySPA, convertToMarkdown } from './html.js';
@@ -54,9 +60,12 @@ export default function (pi: ExtensionAPI): void {
 	pi.registerTool({
 		name: 'webfetch',
 		label: 'Web Fetch',
-		description: 'Fetch and process web pages from URLs',
+		description: 'Fetch and process web pages from URLs, optionally with a research query',
 		parameters: Type.Object({
 			url: Type.String({ description: 'The URL to fetch' }),
+			query: Type.Optional(
+				Type.String({ description: 'Optional research question for AI analysis' }),
+			),
 			provider: Type.Optional(
 				Type.Union(
 					[Type.Literal('default'), Type.Literal('clawfetch'), Type.Literal('gh-cli')],
@@ -67,7 +76,7 @@ export default function (pi: ExtensionAPI): void {
 			),
 		}),
 		async execute(_toolCallId, params, _signal) {
-			const result = await fetchUrl(params.url, undefined, params.provider);
+			const result = await webfetchResearch(params.url, params.query);
 			return result;
 		},
 	});
@@ -156,14 +165,49 @@ export default function (pi: ExtensionAPI): void {
 	pi.registerMessageRenderer('webfetch-result', webfetchResultRenderer);
 
 	// Flash command: /webfetch <url> - Fetch a URL directly
+	// Also supports: /webfetch <url> <query> for research mode
 	pi.registerCommand('webfetch', {
-		description: 'Fetch and process a URL (flash command)',
+		description: 'Fetch a URL, optionally with a research query',
 		getArgumentCompletions: (_prefix: string) => null,
 		handler: async (args, ctx) => {
-			const url = args?.trim();
-			if (!url) {
-				ctx.ui.notify('Usage: /webfetch <url>', 'error');
+			if (!args?.trim()) {
+				ctx.ui.notify('Usage: /webfetch <url> [query]', 'error');
 				return;
+			}
+
+			// Parse URL and optional query
+			// URL could be quoted or unquoted
+			const trimmed = args.trim();
+			let url: string;
+			let query: string | undefined;
+
+			// Check if first arg is quoted (multi-word URL or has query)
+			if (trimmed.startsWith('"')) {
+				const endQuote = trimmed.indexOf('"', 1);
+				if (endQuote > 0) {
+					url = trimmed.slice(1, endQuote);
+					query = trimmed.slice(endQuote + 1).trim() || undefined;
+				} else {
+					// No end quote, treat whole thing as URL
+					url = trimmed.slice(1);
+				}
+			} else if (trimmed.startsWith("'")) {
+				const endQuote = trimmed.indexOf("'", 1);
+				if (endQuote > 0) {
+					url = trimmed.slice(1, endQuote);
+					query = trimmed.slice(endQuote + 1).trim() || undefined;
+				} else {
+					url = trimmed.slice(1);
+				}
+			} else {
+				// Unquoted: first token is URL, rest is query
+				const spaceIdx = trimmed.indexOf(' ');
+				if (spaceIdx > 0) {
+					url = trimmed.slice(0, spaceIdx);
+					query = trimmed.slice(spaceIdx + 1).trim() || undefined;
+				} else {
+					url = trimmed;
+				}
 			}
 
 			// Validate URL
@@ -174,10 +218,11 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 
-			ctx.ui.setStatus('webfetch', 'Fetching...');
+			const statusMsg = query ? 'Researching...' : 'Fetching...';
+			ctx.ui.setStatus('webfetch', statusMsg);
 
 			try {
-				const result = await fetchUrl(url);
+				const result = await webfetchResearch(url, query);
 				const text = result.content[0]?.text || 'No content';
 
 				// Add fetched content to context as a message without triggering a new turn

@@ -1,6 +1,7 @@
 // Fetch functions for webfetch extension
 
 import type { WebfetchDetails, FetchResult, ProviderConfig, ProviderFetchResult } from './types.js';
+import { spawnPiAgent, type SpawnPiAgentResult } from './pi-agent.js';
 import {
 	convertGitHubToRaw,
 	isLikelyBinaryUrl,
@@ -372,4 +373,96 @@ export async function getProviderStatus(): Promise<
 		available: p.isAvailable(),
 		priority: p.priority,
 	}));
+}
+
+// ============================================================================
+// Research query functions
+// ============================================================================
+
+/** Result type for research queries */
+export interface ResearchResult {
+	/** The analysis text from the sub-agent */
+	analysis: string;
+	/** The original fetch result details */
+	details: WebfetchDetails;
+}
+
+/**
+ * Fetch a URL and analyze its content based on a research query
+ *
+ * @param url - The URL to fetch
+ * @param query - Optional research question/analysis request
+ * @param fetchFn - Optional fetch function (defaults to global fetch)
+ * @returns FetchResult with analysis or error content
+ *
+ * @example
+ * ```typescript
+ * // With query - returns AI analysis
+ * const result = await webfetchResearch('https://example.com', 'Summarize this page');
+ *
+ * // Without query - falls back to regular fetch
+ * const result = await webfetchResearch('https://example.com');
+ * ```
+ */
+export async function webfetchResearch(
+	url: string,
+	query?: string,
+	fetchFn?: typeof fetch,
+): Promise<FetchResult> {
+	// Use provided fetch or default
+	const fetchFunc = fetchFn || fetch;
+
+	// First, fetch the URL content
+	const fetchResult = await fetchUrl(url, fetchFunc);
+
+	// If no query provided, return regular fetch result
+	if (!query) {
+		return fetchResult;
+	}
+
+	// Extract content from fetch result
+	const content = fetchResult.content[0]?.text || '';
+
+	// Check if we have actual content to analyze
+	if (!content || content.includes('Error:')) {
+		return fetchResult;
+	}
+
+	try {
+		// Spawn pi agent to analyze the content
+		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query);
+
+		// Build response with analysis
+		const header = [
+			`## Research Result\n`,
+			`**URL:** ${url}\n`,
+			`**Query:** ${query}\n`,
+			`\n---\n`,
+		].join('');
+
+		const researchDetails: WebfetchDetails = {
+			...fetchResult.details,
+			processedAs: 'research',
+		};
+
+		return {
+			content: [{ type: 'text', text: header + agentResult.analysis }],
+			details: researchDetails,
+		};
+	} catch (error) {
+		// On agent error, fall back to showing the fetched content
+		const errorMessage = error instanceof Error ? error.message : String(error);
+		const fallbackHeader = [
+			`## Fetch Result (Agent Error)\n`,
+			`**URL:** ${url}\n`,
+			`**Query:** ${query}\n`,
+			`**Agent Error:** ${errorMessage}\n`,
+			`\n---\n`,
+		].join('');
+
+		return {
+			content: [{ type: 'text', text: fallbackHeader + content }],
+			details: { ...fetchResult.details, processedAs: 'error' },
+		};
+	}
 }

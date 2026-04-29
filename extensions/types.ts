@@ -4,7 +4,7 @@ export interface WebfetchDetails {
 	url: string;
 	contentType: string | null;
 	status: number;
-	processedAs: 'markdown' | 'binary' | 'error' | 'spa' | 'fallback';
+	processedAs: 'markdown' | 'binary' | 'error' | 'spa' | 'fallback' | 'research';
 	tempFileSize?: number;
 	truncated?: boolean;
 	originalSize?: number;
