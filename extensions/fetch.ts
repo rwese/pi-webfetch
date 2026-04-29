@@ -387,6 +387,9 @@ export interface ResearchResult {
 	details: WebfetchDetails;
 }
 
+/** Status callback for long-running operations */
+export type StatusCallback = (status: string) => void;
+
 /**
  * Fetch a URL and analyze its content based on a research query
  *
@@ -408,11 +411,13 @@ export async function webfetchResearch(
 	url: string,
 	query?: string,
 	fetchFn?: typeof fetch,
+	onStatus?: StatusCallback,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
 
 	// First, fetch the URL content
+	onStatus?.('fetching (using webfetch)...');
 	const fetchResult = await fetchUrl(url, fetchFunc);
 
 	// If no query provided, return regular fetch result
@@ -430,6 +435,7 @@ export async function webfetchResearch(
 
 	try {
 		// Spawn pi agent to analyze the content
+		onStatus?.('asking sub agent...');
 		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query);
 
 		// Build response with analysis

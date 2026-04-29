@@ -218,11 +218,12 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 
-			const statusMsg = query ? 'Researching...' : 'Fetching...';
-			ctx.ui.setStatus('webfetch', statusMsg);
+			ctx.ui.setStatus('webfetch', query ? 'Researching...' : 'Fetching...');
 
 			try {
-				const result = await webfetchResearch(url, query);
+				const result = await webfetchResearch(url, query, undefined, (status) => {
+					ctx.ui.setStatus('webfetch', status);
+				});
 				const text = result.content[0]?.text || 'No content';
 
 				// Add fetched content to context as a message without triggering a new turn
