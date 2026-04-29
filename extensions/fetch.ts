@@ -435,8 +435,7 @@ export async function webfetchResearch(
 		// Build response with analysis
 		const header = [
 			`## Research Result\n`,
-			`**URL:** ${url}\n`,
-			`**Query:** ${query}\n`,
+			`**Command:** /webfetch ${url} "${query}"\n`,
 			`\n---\n`,
 		].join('');
 
@@ -454,8 +453,7 @@ export async function webfetchResearch(
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		const fallbackHeader = [
 			`## Fetch Result (Agent Error)\n`,
-			`**URL:** ${url}\n`,
-			`**Query:** ${query}\n`,
+			`**Command:** /webfetch ${url} "${query}"\n`,
 			`**Agent Error:** ${errorMessage}\n`,
 			`\n---\n`,
 		].join('');
