@@ -1,6 +1,7 @@
 // pi-webfetch extension - main entry point
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { webfetchResultRenderer } from "./message-renderers.js";
 import { Type } from "@sinclair/typebox";
 
 export type { WebfetchDetails, FetchResult, ExtractResult, ProviderConfig, ProviderCapabilities, URLDetection, ProviderFetchResult, WebfetchProvider } from "./types.js";
@@ -116,6 +117,9 @@ export default function (pi: ExtensionAPI): void {
 		},
 	});
 
+	// Register message renderer for webfetch results
+	pi.registerMessageRenderer("webfetch-result", webfetchResultRenderer);
+
 	// Flash command: /webfetch <url> - Fetch a URL directly
 	pi.registerCommand("webfetch", {
 		description: "Fetch and process a URL (flash command)",
@@ -140,7 +144,14 @@ export default function (pi: ExtensionAPI): void {
 			try {
 				const result = await fetchUrl(url);
 				const text = result.content[0]?.text || "No content";
-				ctx.ui.notify(text, "info");
+
+				// Add fetched content to context as a message without triggering a new turn
+				pi.sendMessage({
+					customType: "webfetch-result",
+					content: [{ type: "text", text }],
+					display: true,
+					details: { ...result.details },
+				});
 			} catch (error) {
 				const message = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Fetch failed: ${message}`, "error");
