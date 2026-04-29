@@ -30,7 +30,8 @@ export function truncateToSize(text: string, maxSize: number): string {
 export function isLikelyBinaryUrl(url: string): boolean {
 	// Remove query string and fragment before checking extension
 	const cleanUrl = url.split(/[?#]/)[0];
-	const binaryExtensions = /\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|mp3|wav|pdf|zip|tar|gz|rar|7z|doc|docx|xls|xlsx|ppt|pptx)$/i;
+	const binaryExtensions =
+		/\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|mp3|wav|pdf|zip|tar|gz|rar|7z|doc|docx|xls|xlsx|ppt|pptx)$/i;
 	return binaryExtensions.test(cleanUrl);
 }
 
@@ -40,7 +41,7 @@ export function convertGitHubToRaw(url: string): { rawUrl: string; isGitHubRaw: 
 	if (url.includes('raw.githubusercontent.com')) {
 		return { rawUrl: url, isGitHubRaw: true };
 	}
-	
+
 	const blobMatch = url.match(/^https:\/\/github\.com\/([^/]+)\/([^/]+)\/blob\/([^/]+)\/(.+)$/);
 	if (blobMatch) {
 		const [, owner, repo, branch, path] = blobMatch;

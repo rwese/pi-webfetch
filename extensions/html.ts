@@ -67,7 +67,10 @@ function cleanHtml(html: string): string {
 		}
 
 		// Remove HTML comments (often contain embedded data)
-		$.root().contents().filter((_, node) => node.type === 'comment').remove();
+		$.root()
+			.contents()
+			.filter((_, node) => node.type === 'comment')
+			.remove();
 
 		// Remove script tags with JSON data (application/json)
 		$('script[type="application/json"]').remove();
@@ -83,7 +86,9 @@ function cleanHtml(html: string): string {
 		// Get cleaned HTML - extract body content to avoid wrapper tags
 		const body = $('body');
 		if (body.length > 0) {
-			return body.html() || $('body').contents().not('script, style').parent().html() || $.html();
+			return (
+				body.html() || $('body').contents().not('script, style').parent().html() || $.html()
+			);
 		}
 		return $.html();
 	} catch {
@@ -124,8 +129,33 @@ export function extractMainContent(html: string): { content: string; extracted: 
 	// Check if this is a GitHub page
 	const isGitHub = html.includes('github.com') || html.includes('data-color-mode');
 	const selectors = isGitHub
-		? [...GITHUB_CONTENT_SELECTORS, 'article', 'main', '[role="main"]', '.markdown-body', '.file-content', '.content', '.post-content', '.article-content', '#content', '#main-content', '.documentation']
-		: ['article', 'main', '[role="main"]', '.markdown-body', '.file-content', '.content', '.post-content', '.article-content', '#content', '#main-content', '.documentation'];
+		? [
+				...GITHUB_CONTENT_SELECTORS,
+				'article',
+				'main',
+				'[role="main"]',
+				'.markdown-body',
+				'.file-content',
+				'.content',
+				'.post-content',
+				'.article-content',
+				'#content',
+				'#main-content',
+				'.documentation',
+			]
+		: [
+				'article',
+				'main',
+				'[role="main"]',
+				'.markdown-body',
+				'.file-content',
+				'.content',
+				'.post-content',
+				'.article-content',
+				'#content',
+				'#main-content',
+				'.documentation',
+			];
 
 	// Try each selector
 	for (const selector of selectors) {
@@ -159,7 +189,9 @@ export function detectLikelySPA(html: string): {
 	// Check for minimal body content (SPAs often have empty-looking HTML)
 	const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
 	if (bodyMatch) {
-		const bodyContent = bodyMatch[1].replace(/<script[\s\S]*?<\/script>/gi, '').replace(/<style[\s\S]*?<\/style>/gi, '');
+		const bodyContent = bodyMatch[1]
+			.replace(/<script[\s\S]*?<\/script>/gi, '')
+			.replace(/<style[\s\S]*?<\/style>/gi, '');
 		const textLength = bodyContent.replace(/<[^>]+>/g, '').trim().length;
 		if (textLength < 500) {
 			indicators.push('Minimal body content (< 500 chars)');

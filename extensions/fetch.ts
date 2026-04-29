@@ -1,11 +1,6 @@
 // Fetch functions for webfetch extension
 
-import type {
-	WebfetchDetails,
-	FetchResult,
-	ProviderConfig,
-	ProviderFetchResult,
-} from './types.js';
+import type { WebfetchDetails, FetchResult, ProviderConfig, ProviderFetchResult } from './types.js';
 import {
 	convertGitHubToRaw,
 	isLikelyBinaryUrl,
@@ -13,10 +8,7 @@ import {
 	formatBytes,
 	truncateToSize,
 } from './helpers.js';
-import {
-	isBinaryContentType,
-	getExtensionFromContentType,
-} from './content-types.js';
+import { isBinaryContentType, getExtensionFromContentType } from './content-types.js';
 import { extractMainContent, convertToMarkdown } from './html.js';
 import { removeMarkdownAnchors, extractEmbeddedImages } from './markdown.js';
 
@@ -36,7 +28,11 @@ async function getProviderManager() {
 
 /** Build the fetch result header with metadata */
 function buildFetchHeader(details: WebfetchDetails): string {
-	const lines = [`## Fetch Result\n`, `**URL:** ${details.url}\n`, `**Status:** ${details.status}`];
+	const lines = [
+		`## Fetch Result\n`,
+		`**URL:** ${details.url}\n`,
+		`**Status:** ${details.status}`,
+	];
 
 	if (details.contentType) lines.push(`**Content-Type:** ${details.contentType}`);
 
@@ -48,7 +44,8 @@ function buildFetchHeader(details: WebfetchDetails): string {
 	if (details.provider) lines.push(`**Provider:** ${details.provider}`);
 	if (details.extractionMethod) lines.push(`**Method:** ${details.extractionMethod}`);
 	if (details.browserWarning) lines.push(`\n> ⚠️ ${details.browserWarning}`);
-	if (details.truncated) lines.push(`\n> ⚠️ Content truncated to ${formatBytes(MAX_MARKDOWN_SIZE)}`);
+	if (details.truncated)
+		lines.push(`\n> ⚠️ Content truncated to ${formatBytes(MAX_MARKDOWN_SIZE)}`);
 
 	return lines.join('\n') + '\n\n<!-- -->\n\n';
 }
@@ -61,62 +58,63 @@ function buildFetchHeader(details: WebfetchDetails): string {
 export async function fetchUrl(
 	url: string,
 	fetchFn: typeof fetch = fetch,
-	provider?: string
+	provider?: string,
 ): Promise<FetchResult> {
 	// Check if URL is likely binary
 	if (isLikelyBinaryUrl(url)) {
 		return handleBinary(url, fetchFn);
 	}
 
-	// Check for provider-based fetch (SPA or GitHub content)
+	// Check for provider-based fetch (default for HTML content)
 	const manager = await getProviderManager();
-	const detection = manager.detectUrl(url);
-
-	// Check if URL is a raw GitHub URL (should use static fetch, not provider)
 	const hostname = new URL(url).hostname.toLowerCase();
 	const isRawGitHubUrl = hostname === 'raw.githubusercontent.com';
 
-	// Use detection flags to determine if provider should be used
-	// Provider is used for GitHub web URLs, Reddit URLs, or SPAs
-	// Raw GitHub URLs should use static fetch directly
-	const shouldUseProvider = (detection.isGitHub && !isRawGitHubUrl) || detection.isReddit || detection.isLikelySPA || !!provider;
+	// Use provider by default for HTML content; static fetch only for:
+	// - Raw GitHub URLs (machine-readable format)
+	// - When explicitly requested via provider: "none"
+	const shouldUseProvider = !isRawGitHubUrl && provider !== 'none';
 
 	if (shouldUseProvider) {
-		const config: ProviderConfig = { forceProvider: provider };
-		const providerResult = await manager.fetch(url, config);
+		try {
+			const config: ProviderConfig = { forceProvider: provider || undefined };
+			const providerResult = await manager.fetch(url, config);
 
-		if (providerResult && 'content' in providerResult) {
-			const result = providerResult as ProviderFetchResult;
-			const originalSize = Buffer.byteLength(result.content, 'utf-8');
-			let cleanedContent = removeMarkdownAnchors(result.content);
+			if (providerResult && 'content' in providerResult) {
+				const result = providerResult as ProviderFetchResult;
+				const originalSize = Buffer.byteLength(result.content, 'utf-8');
+				let cleanedContent = removeMarkdownAnchors(result.content);
 
-			// Extract embedded images to temp file
-			const imageResult = await extractEmbeddedImages(cleanedContent);
-			cleanedContent = imageResult.content;
+				// Extract embedded images to temp file
+				const imageResult = await extractEmbeddedImages(cleanedContent);
+				cleanedContent = imageResult.content;
 
-			const truncated = originalSize > MAX_MARKDOWN_SIZE;
-			let content = truncateToSize(cleanedContent, MAX_MARKDOWN_SIZE);
-			if (imageResult.tempFilePath) {
-				content += `\n\n> 📎 **Embedded images** extracted to: ${imageResult.tempFilePath}`;
+				const truncated = originalSize > MAX_MARKDOWN_SIZE;
+				let content = truncateToSize(cleanedContent, MAX_MARKDOWN_SIZE);
+				if (imageResult.tempFilePath) {
+					content += `\n\n> 📎 **Embedded images** extracted to: ${imageResult.tempFilePath}`;
+				}
+
+				const details: WebfetchDetails = {
+					url,
+					contentType: result.contentType,
+					status: result.status,
+					processedAs: 'spa',
+					originalSize,
+					tempFileSize: Buffer.byteLength(content, 'utf-8'),
+					truncated,
+					extracted: true,
+					provider: result.providerName,
+					extractionMethod: result.extractionMethod,
+				};
+
+				return {
+					content: [{ type: 'text', text: buildFetchHeader(details) + content }],
+					details,
+				};
 			}
-
-			const details: WebfetchDetails = {
-				url,
-				contentType: result.contentType,
-				status: result.status,
-				processedAs: 'spa',
-				originalSize,
-				tempFileSize: Buffer.byteLength(content, 'utf-8'),
-				truncated,
-				extracted: true,
-				provider: result.providerName,
-				extractionMethod: result.extractionMethod,
-			};
-
-			return {
-				content: [{ type: 'text', text: buildFetchHeader(details) + content }],
-				details,
-			};
+		} catch {
+			// Provider failed, fall back to static fetch
 		}
 	}
 
@@ -157,7 +155,11 @@ async function staticFetch(url: string, fetchFn: typeof fetch): Promise<FetchRes
 		}
 
 		// Text/markdown content (GitHub raw files)
-		if (isGitHubRaw || contentType?.includes('text/plain') || contentType?.includes('text/markdown')) {
+		if (
+			isGitHubRaw ||
+			contentType?.includes('text/plain') ||
+			contentType?.includes('text/markdown')
+		) {
 			const text = await response.text();
 			const originalSize = Buffer.byteLength(text, 'utf-8');
 			const truncated = originalSize > MAX_MARKDOWN_SIZE;
@@ -268,7 +270,12 @@ async function handleBinary(url: string, fetchFn: typeof fetch): Promise<FetchRe
 			details,
 		};
 	} catch (error) {
-		const details: WebfetchDetails = { url, contentType: null, status: 0, processedAs: 'error' };
+		const details: WebfetchDetails = {
+			url,
+			contentType: null,
+			status: 0,
+			processedAs: 'error',
+		};
 		return { content: [{ type: 'text', text: `Error downloading binary: ${error}` }], details };
 	}
 }
@@ -278,7 +285,11 @@ async function handleBinary(url: string, fetchFn: typeof fetch): Promise<FetchRe
 // ============================================================================
 
 /** Convenience wrapper for fetchUrl */
-export async function webfetch(url: string, fetchFn?: typeof fetch, provider?: string): Promise<FetchResult> {
+export async function webfetch(
+	url: string,
+	fetchFn?: typeof fetch,
+	provider?: string,
+): Promise<FetchResult> {
 	return fetchUrl(url, fetchFn, provider);
 }
 
@@ -286,10 +297,13 @@ export async function webfetch(url: string, fetchFn?: typeof fetch, provider?: s
 export async function webfetchSPA(
 	url: string,
 	waitFor: string = 'networkidle',
-	timeout: number = 30000
+	timeout: number = 30000,
 ): Promise<FetchResult> {
 	const manager = await getProviderManager();
-	const config: ProviderConfig = { timeout, waitFor: waitFor as 'networkidle' | 'domcontentloaded' };
+	const config: ProviderConfig = {
+		timeout,
+		waitFor: waitFor as 'networkidle' | 'domcontentloaded',
+	};
 	const result = await manager.fetch(url, config);
 
 	if (result && 'content' in result) {
@@ -333,7 +347,7 @@ export async function webfetchSPA(
 /** Download file to temp location */
 export async function downloadFile(
 	url: string,
-	fetchFn: typeof fetch = fetch
+	fetchFn: typeof fetch = fetch,
 ): Promise<{ tempPath: string; contentType: string | null }> {
 	const response = await fetchFn(url);
 	const contentType = response.headers.get('content-type');
@@ -348,7 +362,9 @@ export async function downloadFile(
 }
 
 /** Get status of all providers */
-export async function getProviderStatus(): Promise<{ name: string; available: boolean; priority: number }[]> {
+export async function getProviderStatus(): Promise<
+	{ name: string; available: boolean; priority: number }[]
+> {
 	const manager = await getProviderManager();
 	const providers = manager.getAll();
 	return providers.map((p: { name: string; isAvailable: () => boolean; priority: number }) => ({

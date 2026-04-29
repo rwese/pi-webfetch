@@ -42,7 +42,10 @@ export function removeMarkdownAnchors(markdown: string): string {
 	// Pattern matches any markdown link where href starts with # (with optional title)
 	// 1. Empty brackets with anchor: [](#anchor) or [](#anchor "title")
 	// 2. Non-empty brackets with anchor AND title: [text](#anchor "title")
-	const cleaned = content.replace(/\[\]\(#[^)]+(?:\s+"[^"]*")?\)|\[[^\]]*\]\(#[^)]+\s+"[^"]*"\)/g, '');
+	const cleaned = content.replace(
+		/\[\]\(#[^)]+(?:\s+"[^"]*")?\)|\[[^\]]*\]\(#[^)]+\s+"[^"]*"\)/g,
+		'',
+	);
 	return restoreCodeBlocks(cleaned, blocks);
 }
 /**
@@ -50,7 +53,7 @@ export function removeMarkdownAnchors(markdown: string): string {
  * Replaces inline images with reference-style links.
  */
 export async function extractEmbeddedImages(
-	markdown: string
+	markdown: string,
 ): Promise<{ content: string; tempFilePath?: string }> {
 	const { content: protectedContent, blocks } = protectCodeBlocks(markdown);
 
@@ -105,7 +108,7 @@ export function stripEmbeddedImages(markdown: string): string {
 	// Match inline images with optional title (double or single quotes)
 	const cleaned = content.replace(
 		/!\[([^\]]*)\]\((?!\[)([^)\s]+)(?:\s+["'][^"']*["'])?\)/g,
-		'$1'
+		'$1',
 	);
 	return restoreCodeBlocks(cleaned, blocks);
 }
