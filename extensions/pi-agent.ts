@@ -84,9 +84,10 @@ export async function spawnPiAgent(
 
 		// Spawn pi with -p flag passing the prompt directly
 		// stdout will contain the analysis result
+		// Use --no-skills --no-extensions for faster startup
 		const proc: ChildProcess = spawn(
 			piPath,
-			['-p', prompt],
+			['-p', prompt, '--no-skills', '--no-extensions'],
 			{
 				stdio: ['ignore', 'pipe', 'pipe'],
 				cwd: cwdOption,
