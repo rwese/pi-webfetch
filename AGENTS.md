@@ -22,19 +22,21 @@ The extension uses a **provider abstraction layer** for content extraction, allo
 
 ### Available Providers
 
-| Provider | Priority | Browser | Features |
+| Provider | Priority | Backend | Features |
 |----------|----------|---------|----------|
 | `default` | 10 | agent-browser | Basic HTML extraction, SPA support |
 | `clawfetch` | 5 | Playwright | GitHub fast-path, Reddit RSS, rich metadata |
+| `gh-cli` | 8 | GitHub CLI | Structured data for issues, PRs, repos (authenticated) |
 
-**Priority**: Higher = tried first. `default` (10) is tried before `clawfetch` (5).
+**Priority**: Higher = tried first. For GitHub URLs, `gh-cli` is preferred if authenticated.
 
 ### Provider Selection
 
 - **Auto-detection**: Best provider selected based on URL type
-- **GitHub URLs**: `clawfetch` preferred (has fast-path for READMEs)
+- **GitHub URLs**: `gh-cli` preferred (structured data, requires authentication)
+- **GitHub fallback**: `clawfetch` if `gh-cli` not available
 - **Reddit URLs**: `clawfetch` preferred (has RSS fast-path)
-- **SPAs**: Both support JavaScript rendering
+- **SPAs**: Browser providers support JavaScript rendering
 
 ### Installing Providers
 
@@ -45,7 +47,10 @@ npm i -g agent-browser && agent-browser install
 # Alternative provider (clawfetch)
 npm install -g clawfetch
 
-# Both can be installed for automatic fallback
+# GitHub CLI (for issues, PRs, repos - must be authenticated)
+gh auth login
+
+# All can be installed for automatic fallback
 ```
 
 ## Tools
@@ -55,12 +60,12 @@ Standard fetch - uses provider system with auto-detection.
 
 **Parameters:**
 - `url` (required): The URL to fetch
-- `provider` (optional): Force specific provider (`"default"` or `"clawfetch"`)
+- `provider` (optional): Force specific provider (`"default"`, `"clawfetch"`, or `"gh-cli"`)
 
 **Example:**
 ```
 webfetch --url "https://example.com"
-webfetch --url "https://github.com/user/repo" --provider "clawfetch"
+webfetch --url "https://github.com/user/repo/issues/123" --provider "gh-cli"
 ```
 
 ### `webfetch-spa`
@@ -107,10 +112,10 @@ Output shows which providers are installed and their priority.
 │                           │                                │
 │     ┌─────────────────────┼─────────────────────┐          │
 │     ▼                     ▼                     ▼          │
-│  ┌─────────┐         ┌──────────┐         ┌───────────┐    │
-│  │Default  │         │Clawfetch │         │ Future... │    │
-│  │Provider │         │ Provider │         │ Providers │    │
-│  └─────────┘         └──────────┘         └───────────┘    │
+│  ┌─────────┐         ┌──────────┐         ┌───────────┐   │
+│  │Default  │         │Clawfetch │         │  GhCli    │   │
+│  │Provider │         │ Provider │         │ Provider  │   │
+│  └─────────┘         └──────────┘         └───────────┘   │
 └─────────────────────────────────────────────────────────────┘
 ```
 
@@ -121,12 +126,22 @@ interface WebfetchProvider {
   readonly name: string;
   readonly priority: number;
   readonly capabilities: ProviderCapabilities;
-  
+
   isAvailable(): boolean;
   detectUrl(url: string): URLDetection;
   fetch(url: string, config?: ProviderConfig): Promise<ProviderFetchResult>;
 }
 ```
+
+### GhCli Provider
+
+The `gh-cli` provider uses the GitHub CLI for structured data extraction:
+
+- **Issues**: Title, body, state, author, labels, assignees, comments
+- **Pull Requests**: Title, body, state, author, files changed, commits
+- **Repos**: Name, description, stars, forks, languages, license
+
+Requires authentication: `gh auth login`
 
 ## Quality Gates
 
@@ -134,10 +149,157 @@ interface WebfetchProvider {
 npm run validate
 ```
 
+## Regression Testing
+
+Track and test URL fetching issues with the regression test system.
+
+### Workflow
+
+1. **Report a URL with issue**
+   ```bash
+   npm run report-url -- --url "https://example.com/page" --issue "broken tables"
+   ```
+   This creates `test/cases/<slug>.md` with metadata.
+
+2. **Capture actual output**
+   - Fetch the URL manually with `webfetch`
+   - Copy the output into the `actual` section of the case file, or:
+   ```bash
+   npm run report-url -- --update <case-id> --actual "$(cat output.md)"
+   ```
+
+3. **Define expected output**
+   - Edit the case file, add the expected markdown in the `expected` code block
+   - Optionally add assertions in the `assertions` block
+
+4. **Run regression tests**
+   ```bash
+   npm run test:regression
+   ```
+
+5. **Fix and verify**
+   - Make changes to fix the issue
+   - Run tests again until passing
+   - Mark as passing: `npm run report-url -- --update <case-id> --status passing`
+
+### Test Case File Format
+
+```markdown
+---
+id: github-issue-42
+url: https://github.com/user/repo/issues/42
+reportedAt: 2024-01-15T10:30:00Z
+issue: Code blocks not rendering correctly
+provider: default
+tags: [github, code-blocks]
+status: pending
+---
+
+```expected
+# Expected markdown output
+```
+
+```actual
+# Actual observed output
+```
+
+```assertions
+contains: # Title
+not_contains: [](#anchor)
+has_lines: > 10
+```
+
+### Assertion Types
+
+| Assertion | Description | Example |
+|-----------|-------------|---------|
+| `contains` | Text must be present | `contains: # Title` |
+| `not_contains` | Text must not be present | `not_contains: ERROR` |
+| `starts_with` | Must start with text | `starts_with: # ` |
+| `ends_with` | Must end with text | `ends_with: ...` |
+| `matches` | Must match regex | `matches: ^\[.*\]` |
+| `has_length` | Exact character count | `has_length: 1500` |
+| `has_lines` | Line count comparison | `has_lines: > 10` |
+
+### CLI Commands
+
+```bash
+npm run report-url -- --list              # List all cases
+npm run report-url -- --list --status_filter pending  # List pending
+npm run report-url -- --update <id> --status passing  # Mark as passing
+```
+
+## HTML Fixtures
+
+Collect raw HTML from real websites for offline regression testing.
+
+### Why Fixtures?
+
+- **Reproducible**: No network calls, no flaky tests
+- **Shareable**: Include problematic pages in PRs
+- **CI-friendly**: Works offline and in any environment
+- **Debuggable**: Inspect actual HTML without re-fetching
+
+### Collecting Fixtures
+
+```bash
+# Method 1: Using the collection script
+./test/fixtures/_collect.sh "https://example.com/page" my-page
+
+# Method 2: Manual curl
+curl -sL "https://example.com/page" > test/fixtures/my-page.html
+
+# Method 3: From browser DevTools
+# Copy outerHTML of the relevant element
+```
+
+The script creates two files:
+- `test/fixtures/my-page.html` - Raw HTML
+- `test/fixtures/my-page.metadata.json` - Source info
+
+### Fixture File Format
+
+```html
+<!-- test/fixtures/github-issue-42.html -->
+<!-- Source: https://github.com/user/repo/issues/42 -->
+<!-- Fetched: 2024-01-15T10:30:00Z -->
+<!DOCTYPE html>
+<html>
+<!-- page content -->
+</html>
+```
+
+### Using Fixtures in Tests
+
+```typescript
+import { loadFixture, processFixture } from "./fixtures/index";
+
+// Load raw HTML
+const fixture = loadFixture("github-issue-42");
+if (fixture) {
+  console.log("URL:", fixture.metadata?.url);
+  console.log("HTML length:", fixture.html.length);
+}
+
+// Process through webfetch pipeline
+const result = await processFixture("github-issue-42", convertToMarkdown);
+console.log("Markdown:", result.markdown);
+```
+
+### Fixture Directory
+
+```
+test/fixtures/
+├── _collect.sh           # Collection script
+├── index.ts              # Loader helper
+├── README.md             # Full documentation
+└── *.html                # Individual fixtures
+```
+
 ## Development
 
 ```bash
-npm test        # Run tests (142 tests)
+npm test        # Run tests
 npm run lint    # Lint only
 npm run format  # Format
 npm run typecheck # TypeScript check
@@ -153,8 +315,7 @@ pi -e . --offline -p test
 
 1. Create `src/providers/myprovider.ts` implementing `WebfetchProvider`
 2. Register in `ProviderManager` constructor
-3. Add tests in `test/providers.test.ts`
-4. Update this documentation
+3. Update this documentation
 
 ## Code Structure
 
@@ -167,16 +328,29 @@ extensions/
 ├── markdown.ts      # Post-processing (anchors, images)
 ├── content-types.ts # Content detection
 └── fetch.ts         # Fetch functions
+
+src/providers/
+├── types.ts         # Provider interface types
+├── manager.ts       # Provider selection logic
+├── default.ts       # Default browser provider
+├── clawfetch.ts     # Clawfetch provider
+└── gh-cli.ts        # GitHub CLI provider
 ```
 
 ## Troubleshooting
 
 **Poor results from `webfetch`:**
 - Check available providers: `webfetch-providers`
-- Try forcing a specific provider: `--provider "clawfetch"`
-- Install clawfetch for GitHub/Reddit fast-paths
+- Try forcing a specific provider: `--provider "gh-cli"` for GitHub issues/repos
+- Install gh CLI: `gh auth login` for best GitHub results
 
 **No providers available:**
 - Install agent-browser: `npm i -g agent-browser && agent-browser install`
 - Install clawfetch: `npm install -g clawfetch`
+- Install gh CLI: `gh auth login`
 - Falls back to static HTTP fetch if no providers available
+
+**GitHub issues show empty content:**
+- Ensure gh CLI is authenticated: `gh auth status`
+- Re-authenticate if needed: `gh auth login`
+- Force provider: `--provider "gh-cli"`
