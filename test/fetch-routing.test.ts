@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach } from "vitest";
-import { DefaultProvider, ClawfetchProvider, ProviderManager, createProviderManager } from "../src/providers";
+import { DefaultProvider, ClawfetchProvider, GhCliProvider, ProviderManager, createProviderManager } from "../src/providers";
 import { isLikelyBinaryUrl } from "../extensions/helpers";
 
 describe("Fetch Routing Logic", () => {
@@ -19,11 +19,13 @@ describe("Fetch Routing Logic", () => {
 			manager = createProviderManager();
 		});
 
-		it("should select clawfetch for github.com web URLs (if available)", () => {
+		it("should select gh-cli for github.com web URLs (if available and authenticated)", () => {
 			const provider = manager.selectProvider("https://github.com/user/repo");
-			// Clawfetch has GitHub fast path support
+			// gh-cli is preferred for GitHub URLs (structured data), then clawfetch
 			const available = manager.getAvailableProviders();
-			if (available.some(p => p.name === "clawfetch")) {
+			if (available.some(p => p.name === "gh-cli")) {
+				expect(provider?.name).toBe("gh-cli");
+			} else if (available.some(p => p.name === "clawfetch")) {
 				expect(provider?.name).toBe("clawfetch");
 			}
 		});
@@ -95,6 +97,11 @@ describe("Provider Priority Handling", () => {
 	it("documents that clawfetch provider has priority 5 (lower = tried second)", () => {
 		const provider = new ClawfetchProvider();
 		expect(provider.priority).toBe(5);
+	});
+
+	it("documents that gh-cli provider has priority 8", () => {
+		const provider = new GhCliProvider();
+		expect(provider.priority).toBe(8);
 	});
 
 	it("getSortedProviders returns providers in correct priority order", () => {

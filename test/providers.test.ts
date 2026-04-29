@@ -179,10 +179,12 @@ describe("ProviderManager", () => {
 
   it("selects provider for GitHub URLs based on availability", () => {
     const provider = manager.selectProvider("https://github.com/user/repo");
-    // Should select the first available provider (default or clawfetch)
-    // Clawfetch preferred for GitHub if available, otherwise default
+    // Should select the first available provider (gh-cli preferred, then clawfetch, then default)
+    // gh-cli is preferred for GitHub if available and authenticated
     const available = manager.getAvailableProviders();
-    if (available.some(p => p.name === "clawfetch")) {
+    if (available.some(p => p.name === "gh-cli")) {
+      expect(provider?.name).toBe("gh-cli");
+    } else if (available.some(p => p.name === "clawfetch")) {
       expect(provider?.name).toBe("clawfetch");
     } else {
       // Falls back to default

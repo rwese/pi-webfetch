@@ -37,8 +37,8 @@ export default function (pi: ExtensionAPI): void {
 		parameters: Type.Object({
 			url: Type.String({ description: "The URL to fetch" }),
 			provider: Type.Optional(
-				Type.Union([Type.Literal("default"), Type.Literal("clawfetch")], {
-					description: "Force specific provider",
+				Type.Union([Type.Literal("default"), Type.Literal("clawfetch"), Type.Literal("gh-cli")], {
+					description: "Force specific provider (gh-cli for GitHub issues/repos)",
 				})
 			),
 		}),
@@ -105,7 +105,8 @@ export default function (pi: ExtensionAPI): void {
 			lines.push("### Installation");
 			lines.push("```bash");
 			lines.push("npm i -g agent-browser && agent-browser install  # Default provider");
-			lines.push("npm install -g clawfetch                         # Alternative with fast-paths");
+			lines.push("npm install -g clawfetch                         # Alternative with GitHub/Reddit fast-paths");
+				lines.push("gh auth login                                    # GitHub CLI for issues/repos");
 			lines.push("```");
 
 			return {
@@ -131,8 +132,12 @@ export default function (pi: ExtensionAPI): void {
 
 			for (const p of providers.sort((a, b) => b.priority - a.priority)) {
 				const status = p.available ? "✅ Installed" : "❌ Missing";
-				const features = p.name === "default" ? "agent-browser" : "clawfetch";
-				lines.push(`- **${p.name}** (${features}): ${status}`);
+				const features: Record<string, string> = {
+						default: "agent-browser",
+						clawfetch: "clawfetch (GitHub/Reddit fast-paths)",
+						"gh-cli": "gh CLI (GitHub issues/repos)",
+					};
+				lines.push(`- **${p.name}** (${features[p.name] || "-"}): ${status}`);
 			}
 
 			if (available.length === 0) {
@@ -144,8 +149,11 @@ export default function (pi: ExtensionAPI): void {
 					"# agent-browser (default)",
 					"npm i -g agent-browser && agent-browser install",
 					"",
-					"# clawfetch (with GitHub/Reddit fast-paths)",
+					"# clawfetch (GitHub/Reddit fast-paths)",
 					"npm install -g clawfetch",
+					"",
+					"# gh CLI (GitHub issues/repos - must be authenticated)",
+					"gh auth login",
 					"```"
 				);
 				lines.push("", "⚠️ No providers installed - HTML pages will use static fetch.");

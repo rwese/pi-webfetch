@@ -36,13 +36,15 @@ function restoreCodeBlocks(content: string, blocks: string[]): string {
 	return content;
 }
 
-/** Remove markdown anchor links like [](#anchor) */
+/** Remove markdown anchor links like [](#anchor) or [text](#anchor "title") */
 export function removeMarkdownAnchors(markdown: string): string {
 	const { content, blocks } = protectCodeBlocks(markdown);
-	const cleaned = content.replace(/\[\]\(#[^)]+\)/g, '');
+	// Pattern matches any markdown link where href starts with # (with optional title)
+	// 1. Empty brackets with anchor: [](#anchor) or [](#anchor "title")
+	// 2. Non-empty brackets with anchor AND title: [text](#anchor "title")
+	const cleaned = content.replace(/\[\]\(#[^)]+(?:\s+"[^"]*")?\)|\[[^\]]*\]\(#[^)]+\s+"[^"]*"\)/g, '');
 	return restoreCodeBlocks(cleaned, blocks);
 }
-
 /**
  * Extract embedded images from markdown and store in temp file.
  * Replaces inline images with reference-style links.
