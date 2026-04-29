@@ -28,6 +28,9 @@ const BINARY_EXTENSIONS = [
   ".ttf", ".otf", ".woff", ".woff2", ".eot",
 ];
 
+/** Default browser idle timeout in ms (5 minutes) */
+const DEFAULT_BROWSER_IDLE_TIMEOUT = 5 * 60 * 1000;
+
 /**
  * Default provider using agent-browser + cheerio + turndown
  */
@@ -35,8 +38,17 @@ export class DefaultProvider implements WebfetchProvider {
   readonly name = "default";
   readonly priority = 10;
   
-  /** Track if browser is currently open for cleanup */
+  /** Track if browser is currently open */
   private browserOpen = false;
+  
+  /** Current URL in browser */
+  private currentUrl: string | null = null;
+  
+  /** Timer for closing browser after idle */
+  private closeTimer: NodeJS.Timeout | null = null;
+  
+  /** Configurable idle timeout */
+  private idleTimeout: number;
   
   readonly capabilities: ProviderCapabilities = {
     supportsSPA: true,
@@ -45,6 +57,13 @@ export class DefaultProvider implements WebfetchProvider {
     supportsBotProtection: false,
     returnsMetadata: false, // Only URL/status metadata
   };
+  
+  /**
+   * Create provider with configurable idle timeout
+   */
+  constructor(idleTimeoutMs?: number) {
+    this.idleTimeout = idleTimeoutMs ?? DEFAULT_BROWSER_IDLE_TIMEOUT;
+  }
   
   /**
    * Check if agent-browser CLI is available
@@ -156,9 +175,25 @@ export class DefaultProvider implements WebfetchProvider {
   }
   
   /**
+   * Reset the idle close timer
+   */
+  private resetCloseTimer(): void {
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+    }
+    this.closeTimer = setTimeout(() => {
+      this.safeClose();
+    }, this.idleTimeout);
+  }
+  
+  /**
    * Safely close browser - used in finally blocks
    */
   private safeClose(): void {
+    if (this.closeTimer) {
+      clearTimeout(this.closeTimer);
+      this.closeTimer = null;
+    }
     if (this.browserOpen) {
       try {
         execFileSync("agent-browser", ["close"], {
@@ -169,6 +204,7 @@ export class DefaultProvider implements WebfetchProvider {
         // Ignore close errors
       }
       this.browserOpen = false;
+      this.currentUrl = null;
     }
   }
   
@@ -184,13 +220,23 @@ export class DefaultProvider implements WebfetchProvider {
     let contentSource = "body";
     
     try {
-      // Open URL
-      execFileSync("agent-browser", ["open", url], {
-        encoding: "utf-8",
-        stdio: "pipe",
-        timeout,
-      });
-      this.browserOpen = true;
+      // Open URL or navigate if browser already open
+      if (!this.browserOpen) {
+        execFileSync("agent-browser", ["open", url], {
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout,
+        });
+        this.browserOpen = true;
+      } else if (this.currentUrl !== url) {
+        // Navigate to new URL if different
+        execFileSync("agent-browser", ["open", url], {
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout,
+        });
+      }
+      this.currentUrl = url;
       
       // Wait for load
       execFileSync("agent-browser", ["wait", "--load", waitFor], {
@@ -198,6 +244,9 @@ export class DefaultProvider implements WebfetchProvider {
         stdio: "pipe",
         timeout,
       });
+      
+      // Reset idle timer on successful navigation
+      this.resetCloseTimer();
       
       // Try article first
       try {
@@ -241,8 +290,8 @@ export class DefaultProvider implements WebfetchProvider {
         contentSource = "body";
       }
     } finally {
-      // ALWAYS close browser, even on error
-      this.safeClose();
+      // Don't close browser - let idle timer handle it
+      // Browser stays open for research sessions
     }
     
     return { html, contentSource };
@@ -259,13 +308,22 @@ export class DefaultProvider implements WebfetchProvider {
     let text = "";
     
     try {
-      // Open URL
-      execFileSync("agent-browser", ["open", url], {
-        encoding: "utf-8",
-        stdio: "pipe",
-        timeout,
-      });
-      this.browserOpen = true;
+      // Open URL or navigate if browser already open
+      if (!this.browserOpen) {
+        execFileSync("agent-browser", ["open", url], {
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout,
+        });
+        this.browserOpen = true;
+      } else if (this.currentUrl !== url) {
+        execFileSync("agent-browser", ["open", url], {
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout,
+        });
+      }
+      this.currentUrl = url;
       
       // Wait for load
       execFileSync("agent-browser", ["wait", "--load", waitFor], {
@@ -280,9 +338,11 @@ export class DefaultProvider implements WebfetchProvider {
         stdio: "pipe",
         timeout,
       });
+      
+      // Reset idle timer
+      this.resetCloseTimer();
     } finally {
-      // ALWAYS close browser, even on error
-      this.safeClose();
+      // Don't close browser - let idle timer handle it
     }
     
     return text;
