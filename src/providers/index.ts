@@ -21,6 +21,7 @@ export {
 // Providers
 export { DefaultProvider } from "./default";
 export { ClawfetchProvider } from "./clawfetch";
+export { GhCliProvider } from "./gh-cli";
 
 // Manager
 export {
