@@ -20,7 +20,7 @@
 | GitHub Issues | gh-cli | `.../issues/123` | High |
 | GitHub PRs | gh-cli | `.../pull/456` | High |
 | GitHub Repos | gh-cli | `.../owner/repo` | High |
-| GitHub Directory | default/clawfetch | `.../tree/main/src` | Medium |
+| GitHub Directory | gh-cli | `.../tree/main/src` | High |
 | GitHub Raw Files | default | `raw.githubusercontent.com/...` | Medium |
 | Reddit Posts | clawfetch | `reddit.com/r/.../comments/...` | Medium |
 | Simple HTML | default | `example.com`, `wikipedia.org` | High |

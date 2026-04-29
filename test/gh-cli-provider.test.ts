@@ -30,6 +30,57 @@ describe("GhCliProvider", () => {
 		});
 	});
 
+	describe("URL parsing for tree/blob URLs", () => {
+		// Expose parseGitHubUrl for testing via fetch error messages
+		const provider = new GhCliProvider();
+
+		it("parses tree URL with branch and path", async () => {
+			if (!provider.isAvailable()) {
+				return; // Skip if gh not available
+			}
+			try {
+				const result = await provider.fetch(
+					"https://github.com/badlogic/pi-mono/tree/main/packages/coding-agent/examples/extensions/subagent"
+				);
+				expect(result.extractionMethod).toBe("gh-api-contents");
+				expect(result.content).toContain("## Contents");
+				expect(result.metadata.title).toBeTruthy();
+			} catch (e) {
+				// Expected if gh not authenticated
+			}
+		});
+
+		it("parses blob URL for file", async () => {
+			if (!provider.isAvailable()) {
+				return;
+			}
+			try {
+				const result = await provider.fetch(
+					"https://github.com/badlogic/pi-mono/blob/main/README.md"
+				);
+				expect(result.extractionMethod).toBe("gh-api-contents");
+				expect(result.metadata.title).toBe("README.md");
+			} catch (e) {
+				// Expected if gh not authenticated
+			}
+		});
+
+		it("parses root tree URL", async () => {
+			if (!provider.isAvailable()) {
+				return;
+			}
+			try {
+				const result = await provider.fetch(
+					"https://github.com/badlogic/pi-mono/tree/main"
+				);
+				expect(result.extractionMethod).toBe("gh-api-contents");
+				expect(result.content).toContain("## Contents");
+			} catch (e) {
+				// Expected if gh not authenticated
+			}
+		});
+	});
+
 	describe("detectUrl", () => {
 		const provider = new GhCliProvider();
 

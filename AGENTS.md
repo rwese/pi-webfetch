@@ -140,6 +140,8 @@ The `gh-cli` provider uses the GitHub CLI for structured data extraction:
 - **Issues**: Title, body, state, author, labels, assignees, comments
 - **Pull Requests**: Title, body, state, author, files changed, commits
 - **Repos**: Name, description, stars, forks, languages, license
+- **Directory listings** (`/tree/{branch}/{path}`): Lists files/directories with icons and links
+- **File content** (`/blob/{branch}/{path}`): Shows file metadata and content for text files
 
 Requires authentication: `gh auth login`
 

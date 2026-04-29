@@ -5,7 +5,7 @@
  * Falls back when no browser provider is available or as an alternative.
  */
 
-import { execFileSync, execSync } from "node:child_process";
+import { execFileSync, execSync, spawn } from "node:child_process";
 import {
   type WebfetchProvider,
   type ProviderFetchResult,
@@ -119,7 +119,7 @@ export class GhCliProvider implements WebfetchProvider {
   /**
    * Parse GitHub URL and extract owner/repo/number
    */
-  private parseGitHubUrl(url: string): { owner: string; repo: string; type: 'issue' | 'pr' | 'repo' | 'unknown'; number?: number } | null {
+  private parseGitHubUrl(url: string): { owner: string; repo: string; type: 'issue' | 'pr' | 'repo' | 'tree' | 'blob' | 'unknown'; number?: number; path?: string; ref?: string } | null {
     try {
       const parsed = new URL(url);
       if (parsed.hostname !== "github.com" && parsed.hostname !== "www.github.com") {
@@ -143,9 +143,17 @@ export class GhCliProvider implements WebfetchProvider {
           if (parts[2] === "pull" && parts.length >= 4) {
             return { owner, repo, type: "pr", number: parseInt(parts[3], 10) };
           }
-          if (parts.length === 3) {
-            // Could be tree, blob, etc - treat as repo view
-            return { owner, repo, type: "repo" };
+          if (parts[2] === "tree" && parts.length >= 4) {
+            // /owner/repo/tree/{ref}/{path}
+            const ref = parts[3];
+            const path = parts.length > 4 ? parts.slice(4).join("/") : "";
+            return { owner, repo, type: "tree", ref, path };
+          }
+          if (parts[2] === "blob" && parts.length >= 4) {
+            // /owner/repo/blob/{ref}/{path}
+            const ref = parts[3];
+            const path = parts.length > 4 ? parts.slice(4).join("/") : "";
+            return { owner, repo, type: "blob", ref, path };
           }
         }
       }
@@ -190,13 +198,19 @@ export class GhCliProvider implements WebfetchProvider {
 
     try {
       if (parsed.type === "issue" && parsed.number) {
-        return this.fetchIssue(gh, repo, parsed.number, timeout);
+        return await this.fetchIssue(gh, repo, parsed.number, timeout);
       }
       if (parsed.type === "pr" && parsed.number) {
-        return this.fetchPr(gh, repo, parsed.number, timeout);
+        return await this.fetchPr(gh, repo, parsed.number, timeout);
       }
       if (parsed.type === "repo") {
-        return this.fetchRepo(gh, repo, timeout);
+        return await this.fetchRepo(gh, repo, timeout);
+      }
+      if (parsed.type === "tree") {
+        return await this.fetchDirectory(gh, repo, parsed.ref || "main", parsed.path || "", timeout);
+      }
+      if (parsed.type === "blob") {
+        return await this.fetchFile(gh, repo, parsed.ref || "main", parsed.path || "", timeout);
       }
 
       throw new ProviderError(
@@ -218,7 +232,7 @@ export class GhCliProvider implements WebfetchProvider {
   /**
    * Fetch an issue using gh issue view
    */
-  private fetchIssue(gh: string, repo: string, number: number, timeout: number): ProviderFetchResult {
+  private async fetchIssue(gh: string, repo: string, number: number, timeout: number): Promise<ProviderFetchResult> {
     const args = [
       "issue",
       "view",
@@ -228,7 +242,7 @@ export class GhCliProvider implements WebfetchProvider {
       "--comments",
     ];
 
-    const output = this.execGh(gh, args, timeout);
+    const output = await this.execGh(gh, args, timeout);
     const data = JSON.parse(output);
 
     const comments = data.comments || [];
@@ -281,7 +295,7 @@ export class GhCliProvider implements WebfetchProvider {
   /**
    * Fetch a PR using gh pr view
    */
-  private fetchPr(gh: string, repo: string, number: number, timeout: number): ProviderFetchResult {
+  private async fetchPr(gh: string, repo: string, number: number, timeout: number): Promise<ProviderFetchResult> {
     const args = [
       "pr",
       "view",
@@ -290,7 +304,7 @@ export class GhCliProvider implements WebfetchProvider {
       "--json", "title,body,state,author,additions,deletions,changedFiles,commits,reviews",
     ];
 
-    const output = this.execGh(gh, args, timeout);
+    const output = await this.execGh(gh, args, timeout);
     const data = JSON.parse(output);
 
     let content = `# ${data.title || `PR #${number}`}\n\n`;
@@ -327,7 +341,7 @@ export class GhCliProvider implements WebfetchProvider {
   /**
    * Fetch a repo using gh repo view
    */
-  private fetchRepo(gh: string, repo: string, timeout: number): ProviderFetchResult {
+  private async fetchRepo(gh: string, repo: string, timeout: number): Promise<ProviderFetchResult> {
     const args = [
       "repo",
       "view",
@@ -335,7 +349,7 @@ export class GhCliProvider implements WebfetchProvider {
       "--json", "name,description,owner,defaultBranchRef,stargazerCount,forkCount,openIssueCount,openPRCount,licenseInfo,languages",
     ];
 
-    const output = this.execGh(gh, args, timeout);
+    const output = await this.execGh(gh, args, timeout);
     const data = JSON.parse(output);
 
     let content = `# ${data.name || repo}\n\n`;
@@ -380,20 +394,324 @@ export class GhCliProvider implements WebfetchProvider {
   }
 
   /**
-   * Execute gh CLI
+   * Fetch directory contents using GitHub API
    */
-  private execGh(gh: string, args: string[], timeout: number): string {
+  private async fetchDirectory(gh: string, repo: string, ref: string, path: string, timeout: number): Promise<ProviderFetchResult> {
+    const apiPath = path ? `/repos/${repo}/contents/${path}` : `/repos/${repo}/contents`;
+    // Add ref as query parameter
+    const fullPath = `${apiPath}?ref=${ref}`;
+    const args = ["api", fullPath, "--jq", "."];
+    
+    const output = await this.execGh(gh, args, timeout);
+    
+    // The API returns an array of entries
+    let entries: Array<{
+      name: string;
+      type: string;
+      size: number;
+      download_url: string | null;
+      html_url: string;
+    }>;
+    
     try {
-      return execSync([gh, ...args].join(" "), {
-        encoding: "utf-8",
-        timeout: Math.floor(timeout / 1000),
-        stdio: "pipe",
-        shell: "/bin/bash",
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new ProviderError(`gh execution failed: ${message}`, this.name);
+      entries = JSON.parse(output);
+    } catch {
+      // Single file returned - this is actually a file, not a directory
+      // Re-fetch as a file
+      return this.fetchFile(gh, repo, ref, path, timeout);
     }
+
+    if (!Array.isArray(entries)) {
+      return this.fetchFile(gh, repo, ref, path, timeout);
+    }
+
+    // Sort: directories first, then files, alphabetically
+    entries.sort((a, b) => {
+      if (a.type !== b.type) {
+        return a.type === "dir" ? -1 : 1;
+      }
+      return a.name.localeCompare(b.name);
+    });
+
+    const displayPath = path || "/";
+    let content = `# ${repo}/${path || ""}\n
+`;
+    content += `**Branch:** ${ref}\n`;
+    content += `**Path:** ${displayPath}\n
+`;
+    content += `---\n\n`;
+    content += `## Contents\n\n`;
+
+    for (const entry of entries) {
+      const icon = entry.type === "dir" ? "📁" : this.getFileIcon(entry.name);
+      const size = entry.type === "file" ? ` (${this.formatSize(entry.size)})` : "";
+      const link = entry.html_url.replace("github.com", "github.com");
+      content += `- ${icon} [${entry.name}](${link})${size}\n`;
+    }
+
+    const finalUrl = `https://github.com/${repo}/tree/${ref}/${path}`;
+
+    return {
+      content: content.trim(),
+      metadata: {
+        title: path ? `${path} - ${repo}` : repo,
+        excerpt: `${entries.length} items`,
+      },
+      finalUrl,
+      status: 200,
+      contentType: "text/markdown",
+      extractionMethod: "gh-api-contents",
+      providerName: this.name,
+    };
+  }
+
+  /**
+   * Fetch file contents using GitHub API
+   */
+  private async fetchFile(gh: string, repo: string, ref: string, path: string, timeout: number): Promise<ProviderFetchResult> {
+    const apiPath = `/repos/${repo}/contents/${path}`;
+    // Add ref as query parameter
+    const fullPath = `${apiPath}?ref=${ref}`;
+    const args = ["api", fullPath, "--jq", "."];
+
+    const output = await this.execGh(gh, args, timeout);
+    const data = JSON.parse(output);
+
+    const fileName = path.split("/").pop() || path;
+    const isImage = this.isImageFile(fileName);
+    const isMarkdown = this.isMarkdownFile(fileName);
+    const isCode = this.isCodeFile(fileName);
+
+    let content = `# ${fileName}\n
+`;
+    content += `**Repository:** ${repo}\n`;
+    content += `**Path:** ${path}\n`;
+    content += `**Branch:** ${ref}\n`;
+    content += `**Size:** ${this.formatSize(data.size)}\n`;
+    content += `**SHA:** ${data.sha?.slice(0, 7) || "unknown"}\n\n`;
+    content += `[Open in GitHub](${data.html_url})\n\n`;
+    content += `---\n\n`;
+
+    // For images, link to raw instead of embedding
+    if (isImage && data.download_url) {
+      content += `![${fileName}](${data.download_url})\n\n`;
+      content += `*Image: ${fileName}*\n`;
+    } else if (isMarkdown || isCode || this.isTextFile(fileName)) {
+      // Fetch raw content for text files
+      const rawContent = await this.fetchRawContent(data.download_url, timeout);
+      if (rawContent) {
+        // For markdown files, include the content directly
+        // For code files, wrap in a code block
+        if (isMarkdown) {
+          content += `## File Content\n\n`;
+          content += rawContent;
+        } else {
+          const lang = this.getCodeLanguage(fileName);
+          content += `## File Content\n\n`;
+          content += `\`\`\`${lang}\n${rawContent}\n\`\`\`\n`;
+        }
+      }
+    } else {
+      content += `*Binary file: ${fileName}*\n`;
+      if (data.download_url) {
+        content += `\n[Download ${fileName}](${data.download_url})\n`;
+      }
+    }
+
+    return {
+      content: content.trim(),
+      metadata: {
+        title: fileName,
+        excerpt: path,
+      },
+      finalUrl: data.html_url,
+      status: 200,
+      contentType: "text/markdown",
+      extractionMethod: "gh-api-contents",
+      providerName: this.name,
+    };
+  }
+
+  /**
+   * Fetch raw file content
+   */
+  private fetchRawContent(downloadUrl: string | null, timeout: number): Promise<string | null> {
+    if (!downloadUrl) {
+      return Promise.resolve(null);
+    }
+
+    return new Promise((resolve) => {
+      const proc = spawn("curl", ["-sL", downloadUrl], {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout?.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      const timer = setTimeout(() => {
+        proc.kill("SIGTERM");
+        resolve(null);
+      }, timeout);
+
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) {
+          resolve(stdout);
+        } else {
+          resolve(null);
+        }
+      });
+
+      proc.on("error", () => {
+        clearTimeout(timer);
+        resolve(null);
+      });
+    });
+  }
+
+  /**
+   * Format file size for display
+   */
+  private formatSize(bytes: number): string {
+    if (bytes < 1024) {
+      return `${bytes} B`;
+    }
+    if (bytes < 1024 * 1024) {
+      return `${(bytes / 1024).toFixed(1)} KB`;
+    }
+    if (bytes < 1024 * 1024 * 1024) {
+      return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    }
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+  }
+
+  /**
+   * Get icon for file based on extension
+   */
+  private getFileIcon(filename: string): string {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    const icons: Record<string, string> = {
+      // Code
+      ts: "📜", tsx: "📜", js: "📜", jsx: "📜",
+      py: "🐍", rb: "💎", go: "🔵", rs: "🦀",
+      java: "☕", kt: "�otlin", swift: "🍎",
+      c: "🔧", cpp: "🔧", h: "🔧",
+      // Config
+      json: "📋", yaml: "📋", yml: "📋", toml: "📋",
+      // Markup
+      md: "📝", html: "🌐", css: "🎨", scss: "🎨",
+      // Images
+      png: "🖼️", jpg: "🖼️", jpeg: "🖼️", gif: "🖼️", svg: "🖼️",
+      // Docs
+      txt: "📄", pdf: "📕", doc: "📘",
+      // Archives
+      zip: "📦", tar: "📦", gz: "📦",
+      // Shell
+      sh: "🐚", bash: "🐚", zsh: "🐚",
+    };
+    return icons[ext] || "📄";
+  }
+
+  /**
+   * Check if file is an image
+   */
+  private isImageFile(filename: string): boolean {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    return ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico"].includes(ext);
+  }
+
+  /**
+   * Check if file is markdown
+   */
+  private isMarkdownFile(filename: string): boolean {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    return ["md", "mdx", "markdown"].includes(ext);
+  }
+
+  /**
+   * Check if file is a code file
+   */
+  private isCodeFile(filename: string): boolean {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    return ["ts", "tsx", "js", "jsx", "py", "go", "rs", "java", "kt", "swift",
+            "c", "cpp", "h", "hpp", "cs", "rb", "php", "lua", "sh", "bash", "zsh",
+            "json", "yaml", "yml", "toml", "xml", "sql"].includes(ext);
+  }
+
+  /**
+   * Check if file is text (non-code)
+   */
+  private isTextFile(filename: string): boolean {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    return ["txt", "log", "ini", "cfg", "conf", "env"].includes(ext);
+  }
+
+  /**
+   * Get code language for syntax highlighting
+   */
+  private getCodeLanguage(filename: string): string {
+    const ext = filename.split(".").pop()?.toLowerCase() || "";
+    const langs: Record<string, string> = {
+      ts: "typescript", tsx: "tsx", js: "javascript", jsx: "jsx",
+      py: "python", go: "go", rs: "rust", java: "java",
+      kt: "kotlin", swift: "swift", c: "c", cpp: "cpp",
+      h: "c", hpp: "cpp", cs: "csharp", rb: "ruby",
+      php: "php", lua: "lua", sh: "bash", bash: "bash",
+      zsh: "bash", json: "json", yaml: "yaml", yml: "yaml",
+      toml: "toml", xml: "xml", sql: "sql",
+    };
+    return langs[ext] || "text";
+  }
+
+  /**
+   * Execute gh CLI using spawn (more reliable than execFileSync in some environments)
+   */
+  private async execGh(gh: string, args: string[], timeout: number): Promise<string> {
+    return new Promise<string>((resolve, reject) => {
+      const proc = spawn(gh, args, {
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+
+      proc.stdout?.on("data", (data) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on("data", (data) => {
+        stderr += data.toString();
+      });
+
+      const timer = setTimeout(() => {
+        proc.kill("SIGTERM");
+        reject(new ProviderError(`gh execution timed out after ${timeout}ms`, this.name));
+      }, timeout);
+
+      proc.on("close", (code) => {
+        clearTimeout(timer);
+        if (code === 0) {
+          resolve(stdout);
+        } else {
+          reject(new ProviderError(`gh execution failed with code ${code}: ${stderr || stdout}`, this.name));
+        }
+      });
+
+      proc.on("error", (err) => {
+        clearTimeout(timer);
+        reject(new ProviderError(`gh execution error: ${err.message}`, this.name));
+      });
+    }).catch((error) => {
+      throw error instanceof ProviderError ? error : new ProviderError(error instanceof Error ? error.message : String(error), this.name);
+    });
   }
 
   /**
