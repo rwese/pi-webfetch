@@ -64,7 +64,10 @@ describe("Regression Test Cases", () => {
                // Parse and run simple assertions
                const lines = assertions.split("\n").filter((l) => l.trim());
                for (const line of lines) {
-                  const [assertion, expected] = line.split(":").map((s) => s.trim());
+                  // Split only on first colon to handle values containing colons
+                  const colonIndex = line.indexOf(":");
+                  const assertion = line.slice(0, colonIndex).trim();
+                  const expected = line.slice(colonIndex + 1).trim();
 
                   switch (assertion) {
                      case "contains":

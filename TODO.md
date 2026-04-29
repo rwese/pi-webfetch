@@ -71,7 +71,24 @@ Added `test/provider-fallback.test.ts` with comprehensive fallback chain tests.
 **Status:** ⬜ Pending
 
 ### 9. Add Real URL Regression Suite
-**Status:** ⬜ Pending
+**Status:** ✅ PHASE 1 & 2 DONE
+
+**Current:** 6 cases added, 29 regression tests passing
+
+**Phase 1: Core GitHub Coverage ✅**
+- [x] Add GitHub Issue test case (nodejs/node#1)
+- [x] Add GitHub PR test case (facebook/react#1)
+- [x] Add GitHub Repo test case (microsoft/vscode)
+
+**Phase 2: Other Providers ✅**
+- [x] Add Simple HTML test case (example.com, httpbin.org)
+- [x] Add Wikipedia test case (Apollo 11 article)
+
+**Phase 3: Edge Cases**
+- [ ] Add Reddit Post test case
+- [ ] Add SPA test case
+- [ ] Add 404 handling test case
+- [ ] Add raw file download test case
 
 ---
 
