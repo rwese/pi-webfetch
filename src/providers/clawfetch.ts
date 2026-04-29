@@ -226,6 +226,7 @@ export class ClawfetchProvider implements WebfetchProvider {
       status: 200,
       contentType: "text/markdown",
       extractionMethod: metadata.extraction || "unknown",
+      providerName: this.name,
       fallbackSelector: metadata.fallbackSelector,
     };
   }

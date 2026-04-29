@@ -140,6 +140,7 @@ export class DefaultProvider implements WebfetchProvider {
         status: 200,
         contentType: reportedContentType,
         extractionMethod,
+        providerName: this.name,
         fallbackSelector: htmlResult.contentSource === "body" ? "body" : undefined,
       };
     } catch (error) {

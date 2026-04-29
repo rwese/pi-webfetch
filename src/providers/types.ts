@@ -35,6 +35,8 @@ export interface ProviderFetchResult {
   contentType: string | null;
   /** How the content was extracted */
   extractionMethod: string;
+  /** Name of the provider that handled this fetch */
+  providerName: string;
   /** Fallback selector used if not primary method */
   fallbackSelector?: string;
 }

@@ -274,6 +274,7 @@ export class GhCliProvider implements WebfetchProvider {
       status: 200,
       contentType: "text/markdown",
       extractionMethod: "gh-issue-view",
+      providerName: this.name,
     };
   }
 
@@ -319,6 +320,7 @@ export class GhCliProvider implements WebfetchProvider {
       status: 200,
       contentType: "text/markdown",
       extractionMethod: "gh-pr-view",
+      providerName: this.name,
     };
   }
 
@@ -373,6 +375,7 @@ export class GhCliProvider implements WebfetchProvider {
       status: 200,
       contentType: "text/markdown",
       extractionMethod: "gh-repo-view",
+      providerName: this.name,
     };
   }
 

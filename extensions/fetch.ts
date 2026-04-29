@@ -109,7 +109,7 @@ export async function fetchUrl(
 				tempFileSize: Buffer.byteLength(content, 'utf-8'),
 				truncated,
 				extracted: true,
-				provider: 'provider',
+				provider: result.providerName,
 				extractionMethod: result.extractionMethod,
 			};
 
@@ -316,7 +316,7 @@ export async function webfetchSPA(
 			tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
 			truncated,
 			extracted: true,
-			provider: 'provider',
+			provider: providerResult.providerName,
 			extractionMethod: providerResult.extractionMethod,
 		};
 

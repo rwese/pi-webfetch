@@ -45,6 +45,7 @@ export interface ProviderFetchResult {
 	contentType: string;
 	status: number;
 	extractionMethod?: string;
+	providerName?: string;
 	metadata?: Record<string, unknown>;
 }
 
