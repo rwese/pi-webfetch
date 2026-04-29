@@ -249,6 +249,13 @@ export class ClawfetchProvider implements WebfetchProvider {
   }
   
   /**
+   * Clean up resources (clawfetch handles its own cleanup)
+   */
+  async close(): Promise<void> {
+    // clawfetch is stateless, nothing to clean up
+  }
+  
+  /**
    * Check if URL is likely binary
    */
   private checkLikelyBinary(url: string): boolean {

@@ -35,6 +35,9 @@ export class DefaultProvider implements WebfetchProvider {
   readonly name = "default";
   readonly priority = 10;
   
+  /** Track if browser is currently open for cleanup */
+  private browserOpen = false;
+  
   readonly capabilities: ProviderCapabilities = {
     supportsSPA: true,
     supportsGitHubFastPath: false, // Handled at higher level
@@ -152,6 +155,23 @@ export class DefaultProvider implements WebfetchProvider {
   }
   
   /**
+   * Safely close browser - used in finally blocks
+   */
+  private safeClose(): void {
+    if (this.browserOpen) {
+      try {
+        execFileSync("agent-browser", ["close"], {
+          encoding: "utf-8",
+          stdio: "pipe",
+        });
+      } catch {
+        // Ignore close errors
+      }
+      this.browserOpen = false;
+    }
+  }
+  
+  /**
    * Extract HTML from browser using agent-browser
    */
   private async extractHtmlFromBrowser(
@@ -159,70 +179,69 @@ export class DefaultProvider implements WebfetchProvider {
     waitFor: string,
     timeout: number
   ): Promise<{ html: string; contentSource: string }> {
-    // Open URL
-    execFileSync("agent-browser", ["open", url], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout,
-    });
-    
-    // Wait for load
-    execFileSync("agent-browser", ["wait", "--load", waitFor], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout,
-    });
-    
     let html = "";
     let contentSource = "body";
     
-    // Try article first
     try {
-      const articleHtml = execFileSync(
-        "agent-browser",
-        ["get", "html", "article"],
-        { encoding: "utf-8", stdio: "pipe", timeout: 5000 }
-      );
-      if (articleHtml && articleHtml.trim().length > 100) {
-        html = articleHtml;
-        contentSource = "article";
-      }
-    } catch {
-      // Continue
-    }
-    
-    // Try main
-    if (!html) {
-      try {
-        const mainHtml = execFileSync(
-          "agent-browser",
-          ["get", "html", "main"],
-          { encoding: "utf-8", stdio: "pipe", timeout: 5000 }
-        );
-        if (mainHtml && mainHtml.trim().length > 100) {
-          html = mainHtml;
-          contentSource = "main";
-        }
-      } catch {
-        // Continue
-      }
-    }
-    
-    // Fallback to body
-    if (!html || html.trim().length < 100) {
-      html = execFileSync("agent-browser", ["get", "html", "body"], {
+      // Open URL
+      execFileSync("agent-browser", ["open", url], {
         encoding: "utf-8",
         stdio: "pipe",
         timeout,
       });
-      contentSource = "body";
-    }
-    
-    // Close browser
-    try {
-      execFileSync("agent-browser", ["close"], { encoding: "utf-8", stdio: "pipe" });
-    } catch {
-      // Ignore close errors
+      this.browserOpen = true;
+      
+      // Wait for load
+      execFileSync("agent-browser", ["wait", "--load", waitFor], {
+        encoding: "utf-8",
+        stdio: "pipe",
+        timeout,
+      });
+      
+      // Try article first
+      try {
+        const articleHtml = execFileSync(
+          "agent-browser",
+          ["get", "html", "article"],
+          { encoding: "utf-8", stdio: "pipe", timeout: 5000 }
+        );
+        if (articleHtml && articleHtml.trim().length > 100) {
+          html = articleHtml;
+          contentSource = "article";
+        }
+      } catch {
+        // Continue
+      }
+      
+      // Try main
+      if (!html) {
+        try {
+          const mainHtml = execFileSync(
+            "agent-browser",
+            ["get", "html", "main"],
+            { encoding: "utf-8", stdio: "pipe", timeout: 5000 }
+          );
+          if (mainHtml && mainHtml.trim().length > 100) {
+            html = mainHtml;
+            contentSource = "main";
+          }
+        } catch {
+          // Continue
+        }
+      }
+      
+      // Fallback to body
+      if (!html || html.trim().length < 100) {
+        html = execFileSync("agent-browser", ["get", "html", "body"], {
+          encoding: "utf-8",
+          stdio: "pipe",
+          timeout,
+        });
+        contentSource = "body";
+      }
+    } finally {
+      // ALWAYS close browser, even on error
+      this.safeClose();
     }
     
     return { html, contentSource };
@@ -236,35 +255,43 @@ export class DefaultProvider implements WebfetchProvider {
     waitFor: string,
     timeout: number
   ): Promise<string> {
-    // Open URL
-    execFileSync("agent-browser", ["open", url], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout,
-    });
+    let text = "";
     
-    // Wait for load
-    execFileSync("agent-browser", ["wait", "--load", waitFor], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout,
-    });
-    
-    // Get text from body
-    const text = execFileSync("agent-browser", ["get", "text", "body"], {
-      encoding: "utf-8",
-      stdio: "pipe",
-      timeout,
-    });
-    
-    // Close browser
     try {
-      execFileSync("agent-browser", ["close"], { encoding: "utf-8", stdio: "pipe" });
-    } catch {
-      // Ignore close errors
+      // Open URL
+      execFileSync("agent-browser", ["open", url], {
+        encoding: "utf-8",
+        stdio: "pipe",
+        timeout,
+      });
+      this.browserOpen = true;
+      
+      // Wait for load
+      execFileSync("agent-browser", ["wait", "--load", waitFor], {
+        encoding: "utf-8",
+        stdio: "pipe",
+        timeout,
+      });
+      
+      // Get text from body
+      text = execFileSync("agent-browser", ["get", "text", "body"], {
+        encoding: "utf-8",
+        stdio: "pipe",
+        timeout,
+      });
+    } finally {
+      // ALWAYS close browser, even on error
+      this.safeClose();
     }
     
     return text;
+  }
+  
+  /**
+   * Clean up browser resources
+   */
+  async close(): Promise<void> {
+    this.safeClose();
   }
   
   /**

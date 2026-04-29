@@ -56,7 +56,26 @@ Added `test/provider-fallback.test.ts` with comprehensive fallback chain tests.
 ## Medium Priority
 
 ### 4. Implement Resource Cleanup & Fix Concurrency Issues
-**Status:** ⬜ Pending
+**Status:** ✅ DONE
+**Plan:** [PLAN_TASK4_RESOURCE_CLEANUP.md](./PLAN_TASK4_RESOURCE_CLEANUP.md)
+
+- [x] Add `close()` method to DefaultProvider with `browserOpen` flag
+- [x] Add `finally` blocks to ensure cleanup on errors
+- [x] Add `close()` to ClawfetchProvider (no-op)
+- [x] Add cleanup tests
+- [x] Run tests to verify
+
+**Issues:**
+- No `close()` method implementation in providers
+- No automatic cleanup on errors (browser leaks)
+- Synchronous `execFileSync` blocks event loop
+- No resource pooling
+
+**Phases:**
+1. Add `close()` methods to DefaultProvider & ClawfetchProvider
+2. Add `finally` blocks for error safety
+3. Add resource manager (optional, future)
+4. Add cleanup tests
 
 ### 5. Consolidate URL Detection Logic
 **Status:** ⬜ Pending
