@@ -1,156 +1,39 @@
-# Provider System Gap Fixes - Progress
+# TODO: webfetch-research-query
 
-## Status: In Progress
+## Phases
 
-**Goal:** Can fetch any URL reliably. Real URL regression suite passing.
+- [x] **Phase 1: Create `spawnPiAgent()` helper with fake-pi-process fixture**
+  - [x] Create `test/helpers/fake-pi-process.ts` fixture
+  - [x] Create `extensions/pi-agent.ts` with `spawnPiAgent()` function
+  - [x] Add error handling for spawn failures
 
----
+- [x] **Phase 2: Implement `webfetchResearch()` function**
+  - [x] Add function to `extensions/fetch.ts`
+  - [x] Integrate with existing `fetchUrl()` flow
+  - [x] Handle missing query (fallback to regular fetch)
 
-## High Priority
+- [x] **Phase 3: Register `/webfetch` command with query support**
+  - [x] Update command handler in `extensions/index.ts`
+  - [x] Parse optional query argument
+  - [x] Update tool definition for optional query
 
-### 1. Fix Failing Markdown-Escaping Tests
-**Status:** ✅ DONE
+- [x] **Phase 4: Add unit tests**
+  - [x] Test `spawnPiAgent()` with fake-pi-process
+  - [x] Test `webfetchResearch()` with mocked fetch and agent
+  - [x] Test error cases (fetch failure, spawn failure)
 
-- [x] Investigate: Is the HTML being extracted correctly first? Add debug logging
-- [x] Check if `<pre>` and `<code>` elements are present before turndown
-- [x] If HTML extraction is fine: Add rule to preserve code block content verbatim
-- [x] If HTML extraction fails: Fix extraction before turndown
-- [x] Run `npm test` to verify all pass ✅ (205 tests)
-- [x] Add regression test for edge cases
+- [x] **Phase 5: Update AGENTS.md documentation**
+  - [x] Add research query feature to AGENTS.md
+  - [x] Document usage examples
 
-**Note:** Tests were already passing when investigated. Code block preservation is working correctly.
+## Success Criteria
 
-### 2. Add GhCliProvider Unit Tests
-**Status:** ✅ DONE (partial)
-
-- [x] Test provider properties (name, priority, capabilities)
-- [x] Test URL detection logic
-- [x] Test `isAvailable()` returns boolean
-
-**Note:** Full fetch testing requires gh CLI mocking which has vitest isolation issues.
-Added `test/gh-cli-provider.test.ts` with reliable tests. Integration tests
-should be run manually with gh CLI installed.
-
-```bash
-# Manual integration test
-npx vitest run test/gh-cli-provider.test.ts --grep "integration"
-```
-
-### 3. Add Integration Test for Provider Fallback Chain
-**Status:** ✅ DONE
-
-- [x] Mock providers with vi.fn() for fetch behavior
-- [x] Test single provider success path
-- [x] Test fallback chain when primary fails
-- [x] Test error preservation when all providers fail
-- [x] Test unavailable provider handling
-- [x] Test forced provider selection
-- [x] Test config option provider selection
-- [x] Test provider priority ordering
-- [x] Test closeAll cleanup
-
-Added `test/provider-fallback.test.ts` with comprehensive fallback chain tests.
+- [x] `/webfetch <url>` still works as before
+- [x] `/webfetch <url> <query>` fetches and analyzes content
+- [x] Sub-agent receives both content and query
+- [x] Errors are caught and displayed user-friendly
+- [x] Tests pass with fake-pi-process fixture
 
 ---
 
-## Medium Priority
-
-### 4. Implement Resource Cleanup & Fix Concurrency Issues
-**Status:** ✅ DONE
-**Plan:** [PLAN_TASK4_RESOURCE_CLEANUP.md](./PLAN_TASK4_RESOURCE_CLEANUP.md)
-
-- [x] Add `close()` method to DefaultProvider with `browserOpen` flag
-- [x] Add `finally` blocks to ensure cleanup on errors
-- [x] Add `close()` to ClawfetchProvider (no-op)
-- [x] Add cleanup tests
-- [x] Run tests to verify
-
-**Issues:**
-- No `close()` method implementation in providers
-- No automatic cleanup on errors (browser leaks)
-- Synchronous `execFileSync` blocks event loop
-- No resource pooling
-
-**Phases:**
-1. Add `close()` methods to DefaultProvider & ClawfetchProvider
-2. Add `finally` blocks for error safety
-3. Add resource manager (optional, future)
-4. Add cleanup tests
-
-### 5. Consolidate URL Detection Logic
-**Status:** ⬜ Pending
-
-### 6. Add GhCliProvider Complete Coverage
-**Status:** ⬜ Pending
-
-### 7. Add GhCliProvider Re-authentication Check
-**Status:** ⬜ Pending
-
-### 8. Improve Error Messages with Actionable Suggestions
-**Status:** ⬜ Pending
-
-### 9. Add Real URL Regression Suite
-**Status:** ✅ DONE (9/10 cases)
-
-**Final:** 10 test cases, 41 regression tests, 266 total tests
-
-| Provider | Cases | URL Types |
-|---------|-------|-----------|
-| default | 7 | Simple HTML, Wikipedia, GitHub (issue/PR/repo/dir), Raw files, 404 |
-| clawfetch | 2 | Hacker News (SPA), GitHub directory |
-| gh-cli | 1 | GitHub issue |
-
-**Remaining:** Reddit tests blocked by Reddit blocking requests
-
-```bash
-npm run test:regression  # 41 tests passing
-```
-
----
-
-## Low Priority
-
-### 10. Add Retry Logic with Exponential Backoff ⬜
-### 11. Add Bot Protection Support ⬜
-### 12. Add Security Hardening ⬜
-### 13. Dead Code Cleanup ⬜
-### 14. Add Provider Health Checks ⬜
-### 15. Normalize Timeout Units ⬜
-### 16. Add Proxy Support to Providers ⬜
-### 17. Add User Agent Override to DefaultProvider ⬜
-### 18. Add Custom Headers Support ⬜
-### 19. Add Documentation ⬜
-
----
-
-## Completed
-
-- [x] Add bot protection capability flag
-- [x] Add Reddit RSS fast path
-- [x] Add GitHub structured data
-
----
-
-## Dependencies
-
-```bash
-npm test        # Should pass
-npm run lint    # Should pass
-npm run typecheck # Should pass
-```
-
----
-
-## Priority Order
-
-1. #1 Fix tests (unblock everything) - **STARTING**
-2. #2 GhCliProvider tests
-3. #3 Fallback chain tests
-4. #9 Real URL regression suite
-5. #4 Resource cleanup
-6. #6 GhCliProvider complete
-7. #5 Consolidate detection
-8. #8 Better errors
-9. #12 Security hardening
-10. #7 Re-auth check
-... rest as time permits
+Last updated: 2026-04-29 ✓ COMPLETE

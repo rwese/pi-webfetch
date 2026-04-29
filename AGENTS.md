@@ -56,17 +56,44 @@ gh auth login
 ## Tools
 
 ### `webfetch`
-Standard fetch - uses provider system with auto-detection.
+Fetch a URL and optionally analyze its content with AI.
 
 **Parameters:**
 - `url` (required): The URL to fetch
+- `query` (optional): Research question for AI analysis
 - `provider` (optional): Force specific provider (`"default"`, `"clawfetch"`, or `"gh-cli"`)
 
-**Example:**
+**Examples:**
 ```
 webfetch --url "https://example.com"
+webfetch --url "https://example.com" --query "What is the main topic?"
 webfetch --url "https://github.com/user/repo/issues/123" --provider "gh-cli"
 ```
+
+### `webfetch` Flash Command
+Use `/webfetch` from the chat for quick access.
+
+```bash
+# Simple fetch
+/webfetch https://example.com
+
+# Research query - fetches and analyzes content
+/webfetch https://example.com "Summarize this page"
+/webfetch https://example.com "What are the key points?"
+```
+
+### Research Query Feature
+
+The `webfetch` tool supports a **research mode** that spawns a pi sub-agent to analyze fetched content:
+
+1. Fetches the URL using the provider system
+2. Spawns a pi subprocess with the content + query
+3. Returns the AI analysis instead of raw content
+
+**Error Handling:**
+- If the pi agent fails, falls back to showing the fetched content with error message
+- If fetch fails, returns the error without calling the agent
+- Binary content is not analyzed (returns file download info)
 
 ### `webfetch-spa`
 Explicit browser rendering via provider system.
@@ -329,7 +356,8 @@ extensions/
 ├── html.ts          # HTML extraction
 ├── markdown.ts      # Post-processing (anchors, images)
 ├── content-types.ts # Content detection
-└── fetch.ts         # Fetch functions
+├── fetch.ts         # Fetch functions
+└── pi-agent.ts      # Pi subprocess spawning for research
 
 src/providers/
 ├── types.ts         # Provider interface types
@@ -337,6 +365,10 @@ src/providers/
 ├── default.ts       # Default browser provider
 ├── clawfetch.ts     # Clawfetch provider
 └── gh-cli.ts        # GitHub CLI provider
+
+test/
+└── helpers/
+    └── fake-pi-process.ts   # Test fixture for pi subprocess
 ```
 
 ## Troubleshooting
