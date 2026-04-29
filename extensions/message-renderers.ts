@@ -2,7 +2,7 @@
  * Custom message renderers for webfetch extension.
  */
 
-import { Container, Spacer, Text } from '@mariozechner/pi-tui';
+import { Container, Text, type Component } from '@mariozechner/pi-tui';
 import type { MessageRenderer, ThemeColor } from '@mariozechner/pi-coding-agent';
 
 // Preview line limit when not expanded
@@ -24,6 +24,17 @@ interface WebfetchMessage {
 }
 
 /**
+ * Full-width separator component that adapts to terminal width
+ */
+class FullWidthSeparator implements Component {
+	invalidate(): void {}
+	render(width: number): string[] {
+		// Use Unicode block elements for a clean full-width line
+		return ['─'.repeat(width)];
+	}
+}
+
+/**
  * Check if content is a research result
  */
 function isResearchResult(content: string): boolean {
@@ -35,11 +46,12 @@ function isResearchResult(content: string): boolean {
  */
 function extractCommand(content: string): string | null {
 	const match = content.match(/\*\*Command:\*\* (.+)/);
-	return match ? match[1].trim() : null;
+	if (!match) return null;
+	return match[1].trim();
 }
 
 /**
- * Render research result with special styling
+ * Render research result with simple styling
  */
 function renderResearchResult(
 	content: string,
@@ -47,29 +59,19 @@ function renderResearchResult(
 	theme: { fg: (color: ThemeColor, text: string) => string; bold: (text: string) => string },
 ): Container {
 	const container = new Container();
-	container.addChild(new Spacer(1));
 
-	// Extract command and analysis
 	const command = extractCommand(content);
 	const dividerIndex = content.indexOf('---');
 	const analysis = dividerIndex > 0 ? content.slice(dividerIndex + 4).trim() : content;
 
-	// Top border with special color for research
-	container.addChild(new Text(theme.fg('success', '━'.repeat(60)), 1, 0));
+	// Full-width separator
+	container.addChild(new FullWidthSeparator());
 
-	// Header with emoji
-	const headerText = theme.fg('success', theme.bold('🔍 Research Result'));
-	container.addChild(new Text(headerText, 1, 0));
-
-	// Command line
+	// Header
+	container.addChild(new Text(theme.fg('success', theme.bold('🔍 Research Result')), 1, 0));
 	if (command) {
-		container.addChild(new Text('', 1, 0));
 		container.addChild(new Text(theme.fg('accent', command), 1, 0));
 	}
-
-	// Divider
-	container.addChild(new Text('', 1, 0));
-	container.addChild(new Text(theme.fg('border', '─'.repeat(40)), 1, 0));
 
 	// Analysis content
 	const analysisLines = analysis.split('\n');
@@ -79,31 +81,17 @@ function renderResearchResult(
 	if (displayLines.length > 0) {
 		container.addChild(new Text('', 1, 0));
 		for (const line of displayLines) {
-			// Style markdown headers
-			if (line.startsWith('## ')) {
-				container.addChild(new Text(theme.fg('accent', theme.bold(line)), 1, 0));
-			} else if (line.startsWith('### ')) {
-				container.addChild(new Text(theme.fg('accent', line), 1, 0));
-			} else if (line.startsWith('**') && line.endsWith('**')) {
-				// Bold labels
-				container.addChild(new Text(theme.fg('muted', line), 1, 0));
-			} else if (line.startsWith('- ')) {
-				container.addChild(new Text(theme.fg('text', line), 1, 0));
-			} else {
-				container.addChild(new Text(theme.fg('text', line), 1, 0));
-			}
+			container.addChild(new Text(theme.fg('text', line), 1, 0));
 		}
 	}
 
-	// Hidden lines indicator
 	if (hiddenLineCount > 0 && !expanded) {
 		container.addChild(new Text('', 1, 0));
-		container.addChild(new Text(theme.fg('muted', `... ${hiddenLineCount} more lines`), 1, 0));
+		container.addChild(new Text(theme.fg('muted', `[${hiddenLineCount} more lines]`), 1, 0));
 	}
 
-	// Bottom border
-	container.addChild(new Text('', 1, 0));
-	container.addChild(new Text(theme.fg('success', '━'.repeat(60)), 1, 0));
+	// Full-width separator
+	container.addChild(new FullWidthSeparator());
 
 	return container;
 }
@@ -117,13 +105,13 @@ export const webfetchResultRenderer: MessageRenderer<WebfetchDetails> = (
 	const details = msg.details as WebfetchDetails | undefined;
 	const url = details?.url ?? 'unknown';
 	const processedAs = details?.processedAs;
+	const provider = details?.provider;
 	const content =
 		typeof msg.content === 'string'
 			? msg.content
 			: ((msg.content as Array<{ type: string; text: string }>).find((c) => c.type === 'text')
 					?.text ?? '');
 
-	// Use special renderer for research results
 	if (processedAs === 'research' || isResearchResult(content)) {
 		return renderResearchResult(content, options.expanded, theme);
 	}
@@ -134,31 +122,34 @@ export const webfetchResultRenderer: MessageRenderer<WebfetchDetails> = (
 	const hiddenLineCount = expanded ? 0 : Math.max(0, lines.length - PREVIEW_LINES);
 
 	const container = new Container();
-	container.addChild(new Spacer(1));
 
-	// Top border
-	container.addChild(new Text(theme.fg('border', '─'.repeat(60)), 1, 0));
+	// Full-width separator
+	container.addChild(new FullWidthSeparator());
 
-	// Header with URL
-	const headerText = theme.fg('accent', theme.bold(`🌐 /webfetch ${url}`));
-	container.addChild(new Text(headerText, 1, 0));
+	// Header
+	container.addChild(new Text(theme.fg('accent', theme.bold(`🌐 Fetch Result: ${url}`)), 1, 0));
+	if (provider) {
+		container.addChild(new Text(theme.fg('muted', `Provider: ${provider}`), 1, 0));
+	}
 
 	// Content
 	if (displayLines.length > 0) {
-		const contentText = displayLines.map((line) => theme.fg('muted', line)).join('\n');
-		container.addChild(new Text(`\n${contentText}`, 1, 0));
+		container.addChild(new Text('', 1, 0));
+		for (const line of displayLines) {
+			container.addChild(new Text(theme.fg('text', line), 1, 0));
+		}
 	}
 
-	// Hidden lines indicator
 	if (hiddenLineCount > 0) {
+		container.addChild(new Text('', 1, 0));
 		const hint = expanded
 			? theme.fg('muted', `[${hiddenLineCount} lines hidden]`)
-			: theme.fg('muted', `... ${hiddenLineCount} more lines`);
-		container.addChild(new Text(`\n${hint}`, 1, 0));
+			: theme.fg('muted', `[${hiddenLineCount} more lines]`);
+		container.addChild(new Text(hint, 1, 0));
 	}
 
-	// Bottom border
-	container.addChild(new Text(theme.fg('border', '─'.repeat(60)), 1, 0));
+	// Full-width separator
+	container.addChild(new FullWidthSeparator());
 
 	return container;
 };

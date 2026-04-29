@@ -22,6 +22,7 @@ import {
 	downloadFile,
 	getProviderStatus,
 	webfetchResearch,
+	closeAllProviders,
 } from './fetch.js';
 export { fetchUrl, webfetchSPA, downloadFile, getProviderStatus, webfetchResearch };
 
@@ -164,6 +165,11 @@ export default function (pi: ExtensionAPI): void {
 	// Register message renderer for webfetch results
 	pi.registerMessageRenderer('webfetch-result', webfetchResultRenderer);
 
+	// Register session shutdown handler to clean up browser resources
+	pi.on('session_shutdown', async () => {
+		await closeAllProviders();
+	});
+
 	// Flash command: /webfetch <url> - Fetch a URL directly
 	// Also supports: /webfetch <url> <query> for research mode
 	pi.registerCommand('webfetch', {
@@ -186,7 +192,16 @@ export default function (pi: ExtensionAPI): void {
 				const endQuote = trimmed.indexOf('"', 1);
 				if (endQuote > 0) {
 					url = trimmed.slice(1, endQuote);
-					query = trimmed.slice(endQuote + 1).trim() || undefined;
+					// Extract query after the closing quote, strip surrounding quotes if present
+					const afterQuote = trimmed.slice(endQuote + 1).trim();
+					if (afterQuote.startsWith('"') && afterQuote.endsWith('"')) {
+						query = afterQuote.slice(1, -1).trim() || undefined;
+					} else if (afterQuote.startsWith("'")) {
+						const singleEnd = afterQuote.indexOf("'", 1);
+						query = singleEnd > 0 ? afterQuote.slice(1, singleEnd) : afterQuote.slice(1).trim() || undefined;
+					} else {
+						query = afterQuote || undefined;
+					}
 				} else {
 					// No end quote, treat whole thing as URL
 					url = trimmed.slice(1);
@@ -195,7 +210,16 @@ export default function (pi: ExtensionAPI): void {
 				const endQuote = trimmed.indexOf("'", 1);
 				if (endQuote > 0) {
 					url = trimmed.slice(1, endQuote);
-					query = trimmed.slice(endQuote + 1).trim() || undefined;
+					// Extract query after the closing quote, strip surrounding quotes if present
+					const afterQuote = trimmed.slice(endQuote + 1).trim();
+					if (afterQuote.startsWith("'") && afterQuote.endsWith("'")) {
+						query = afterQuote.slice(1, -1).trim() || undefined;
+					} else if (afterQuote.startsWith('"')) {
+						const doubleEnd = afterQuote.indexOf('"', 1);
+						query = doubleEnd > 0 ? afterQuote.slice(1, doubleEnd) : afterQuote.slice(1).trim() || undefined;
+					} else {
+						query = afterQuote || undefined;
+					}
 				} else {
 					url = trimmed.slice(1);
 				}
@@ -204,7 +228,14 @@ export default function (pi: ExtensionAPI): void {
 				const spaceIdx = trimmed.indexOf(' ');
 				if (spaceIdx > 0) {
 					url = trimmed.slice(0, spaceIdx);
-					query = trimmed.slice(spaceIdx + 1).trim() || undefined;
+					// Strip surrounding quotes from query if present
+					const queryText = trimmed.slice(spaceIdx + 1).trim();
+					if ((queryText.startsWith('"') && queryText.endsWith('"')) ||
+						(queryText.startsWith("'") && queryText.endsWith("'"))) {
+						query = queryText.slice(1, -1).trim() || undefined;
+					} else {
+						query = queryText || undefined;
+					}
 				} else {
 					url = trimmed;
 				}
@@ -218,7 +249,12 @@ export default function (pi: ExtensionAPI): void {
 				return;
 			}
 
-			ctx.ui.setStatus('webfetch', query ? 'Researching...' : 'Fetching...');
+			// Set custom working indicator and status for fetch progress
+			ctx.ui.setWorkingIndicator({
+				frames: ['🌐', '🌎', '🌍', '🌏', '🌗', '🌘'],
+				intervalMs: 150,
+			});
+			ctx.ui.setStatus('webfetch', query ? '🔍 Researching...' : '🌐 Fetching...');
 
 			try {
 				const result = await webfetchResearch(url, query, undefined, (status) => {
@@ -237,6 +273,8 @@ export default function (pi: ExtensionAPI): void {
 				const message = error instanceof Error ? error.message : String(error);
 				ctx.ui.notify(`Fetch failed: ${message}`, 'error');
 			} finally {
+				// Reset working indicator to default and clear status
+				ctx.ui.setWorkingIndicator();
 				ctx.ui.setStatus('webfetch', undefined);
 			}
 		},

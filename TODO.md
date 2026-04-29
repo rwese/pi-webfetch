@@ -1,39 +1,45 @@
-# TODO: webfetch-research-query
+## Goal
 
-## Phases
+Improve webfetch extension output for better user experience: progress indicators, cleaner rendering, and more polished UI.
 
-- [x] **Phase 1: Create `spawnPiAgent()` helper with fake-pi-process fixture**
-  - [x] Create `test/helpers/fake-pi-process.ts` fixture
-  - [x] Create `extensions/pi-agent.ts` with `spawnPiAgent()` function
-  - [x] Add error handling for spawn failures
+## Done
 
-- [x] **Phase 2: Implement `webfetchResearch()` function**
-  - [x] Add function to `extensions/fetch.ts`
-  - [x] Integrate with existing `fetchUrl()` flow
-  - [x] Handle missing query (fallback to regular fetch)
+- [x] **Progress indicators** - Globe animation + status during fetch
+- [x] **Quote parsing fix** - Queries with quotes display correctly
+- [x] **Full-width separators** - Matches pi's notification style
+- [x] **Simple rendering** - Plain text, no fancy boxes
+- [x] **Updated deps** - `pi-coding-agent@0.70.6`
 
-- [x] **Phase 3: Register `/webfetch` command with query support**
-  - [x] Update command handler in `extensions/index.ts`
-  - [x] Parse optional query argument
-  - [x] Update tool definition for optional query
+## Output Format
 
-- [x] **Phase 4: Add unit tests**
-  - [x] Test `spawnPiAgent()` with fake-pi-process
-  - [x] Test `webfetchResearch()` with mocked fetch and agent
-  - [x] Test error cases (fetch failure, spawn failure)
+Both simple fetch and research results now use full-width dash separators:
 
-- [x] **Phase 5: Update AGENTS.md documentation**
-  - [x] Add research query feature to AGENTS.md
-  - [x] Document usage examples
+```
+────────────────────────────────────────────────────────────────────────────────
+🌐 Fetch Result: https://example.com
+Provider: default
+...content...
+────────────────────────────────────────────────────────────────────────────────
 
-## Success Criteria
+────────────────────────────────────────────────────────────────────────────────
+🔍 Research Result
+/webfetch url "query"
+...analysis...
+────────────────────────────────────────────────────────────────────────────────
+```
 
-- [x] `/webfetch <url>` still works as before
-- [x] `/webfetch <url> <query>` fetches and analyzes content
-- [x] Sub-agent receives both content and query
-- [x] Errors are caught and displayed user-friendly
-- [x] Tests pass with fake-pi-process fixture
+## Changes
 
----
+- `extensions/index.ts` - Working indicator, quote stripping
+- `extensions/message-renderers.ts` - FullWidthSeparator component, simple text rendering
 
-Last updated: 2026-04-29 ✓ COMPLETE
+## Testing
+
+```bash
+tmux new-session -d -s webfetch-test -n pi
+tmux send-keys -t webfetch-test:pi 'pi -ne -e . 2>&1' Enter
+tmux send-keys -t webfetch-test:pi '/webfetch https://example.com' Enter
+tmux send-keys -t webfetch-test:pi '/webfetch https://nope.at "list 3 things"' Enter
+tmux capture-pane -t webfetch-test:pi -p -S -30
+tmux kill-session -t webfetch-test
+```
