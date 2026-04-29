@@ -350,7 +350,7 @@ export async function downloadFile(
 /** Get status of all providers */
 export async function getProviderStatus(): Promise<{ name: string; available: boolean; priority: number }[]> {
 	const manager = await getProviderManager();
-	const providers = manager.getProviders();
+	const providers = manager.getAll();
 	return providers.map((p: { name: string; isAvailable: () => boolean; priority: number }) => ({
 		name: p.name,
 		available: p.isAvailable(),
