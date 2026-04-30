@@ -1,5 +1,7 @@
 // Shared types for webfetch extension
 
+import type { FetchPhase } from './helpers.js';
+
 export interface WebfetchDetails {
 	url: string;
 	contentType: string | null;
@@ -12,6 +14,8 @@ export interface WebfetchDetails {
 	browserWarning?: string;
 	provider?: string;
 	extractionMethod?: string;
+	/** Current phase for streaming status display */
+	phase?: FetchPhase;
 }
 
 export interface FetchResult {

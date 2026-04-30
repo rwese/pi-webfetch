@@ -10,6 +10,9 @@ import {
 	formatBytes,
 	truncateToSize,
 } from './helpers.js';
+import type { FetchPhase } from './helpers.js';
+// Re-export FetchPhase for external use
+export type { FetchPhase } from './helpers.js';
 import { isBinaryContentType, getExtensionFromContentType } from './content-types.js';
 import { extractMainContent, convertToMarkdown } from './html.js';
 import { removeMarkdownAnchors, extractEmbeddedImages } from './markdown.js';
@@ -402,14 +405,35 @@ export interface ResearchResult {
 }
 
 /** Status callback for long-running operations */
-export type StatusCallback = (status: string) => void;
+export type StatusCallback = (status: string, phase?: FetchPhase) => void;
 
 /** OnUpdate callback type alias for clarity */
 type OnUpdateCallback = AgentToolUpdateCallback<Record<string, unknown>>;
 
+/** Streaming callback configuration for webfetch */
+export interface StreamingConfig {
+	/** The main onUpdate callback from the tool */
+	callback: OnUpdateCallback | undefined;
+	/** The URL being fetched */
+	url: string;
+	/** Phase to show during initial processing */
+	initialPhase: FetchPhase;
+	/** Phase to show during streaming */
+	streamingPhase: FetchPhase;
+	/** Whether to show header */
+	showHeader?: boolean;
+}
+
+/** Send a partial update through the streaming callback */
+function sendStreamingUpdate(config: StreamingConfig, content: string, phase: FetchPhase): void {
+	config.callback?.({
+		content: [{ type: 'text', text: content }],
+		details: { phase, url: config.url },
+	});
+}
+
 /** Yield to event loop to allow UI updates to be processed */
 function yieldToEventLoop(): Promise<void> {
-	// Use setTimeout(0) which is available in both browser and Node.js
 	return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
@@ -419,6 +443,8 @@ function yieldToEventLoop(): Promise<void> {
  * @param url - The URL to fetch
  * @param query - Optional research question/analysis request
  * @param fetchFn - Optional fetch function (defaults to global fetch)
+ * @param onStatus - Optional status callback for non-streaming updates
+ * @param streamingConfig - Optional streaming configuration for real-time updates
  * @returns FetchResult with analysis or error content
  *
  * @example
@@ -435,17 +461,52 @@ export async function webfetchResearch(
 	query?: string,
 	fetchFn?: typeof fetch,
 	onStatus?: StatusCallback,
-	toolOnUpdate?: OnUpdateCallback,
+	streamingConfig?: StreamingConfig | OnUpdateCallback,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
 
-	// First, fetch the URL content
-	onStatus?.('fetching (using webfetch)...');
+	// Normalize streaming config - handle both StreamingConfig and legacy OnUpdateCallback
+	let config: StreamingConfig | undefined;
+	if (streamingConfig) {
+		if ('callback' in streamingConfig) {
+			config = streamingConfig;
+		} else {
+			// Legacy OnUpdateCallback - wrap it
+			config = {
+				callback: streamingConfig,
+				url,
+				initialPhase: 'processing',
+				streamingPhase: 'streaming',
+			};
+		}
+	}
+
+	// Phase 1: Detect provider
+	if (config) {
+		sendStreamingUpdate(config, '🔍 Detecting provider...', 'detecting-provider');
+	} else {
+		onStatus?.('Detecting provider...', 'detecting-provider');
+	}
+	await yieldToEventLoop();
+
+	// Phase 2: Fetch URL content
+	if (config) {
+		sendStreamingUpdate(config, '🌐 Fetching...', 'fetching');
+	} else {
+		onStatus?.('Fetching...', 'fetching');
+	}
 	const fetchResult = await fetchUrl(url, fetchFunc);
 
 	// If no query provided, return regular fetch result
 	if (!query) {
+		// Show processing phase
+		if (config) {
+			sendStreamingUpdate(config, '⚙️ Processing content...', 'processing');
+		} else {
+			onStatus?.('Processing...', 'processing');
+		}
+		await yieldToEventLoop();
 		return fetchResult;
 	}
 
@@ -458,32 +519,33 @@ export async function webfetchResearch(
 	}
 
 	try {
-		// Spawn pi agent to analyze the content
-		onStatus?.('asking sub agent...');
+		// Phase 3: Analyze content
+		if (config) {
+			sendStreamingUpdate(config, '🧠 Analyzing content...', 'analyzing');
+		} else {
+			onStatus?.('Analyzing...', 'analyzing');
+		}
+		await yieldToEventLoop();
 
-		// If tool has onUpdate callback, stream results directly to it
-		if (toolOnUpdate) {
-			const header = [
-				`## Research Result\n`,
-				`**Command:** /webfetch ${url} "${query}"\n`,
-				`\n---\n`,
-			].join('');
+		// Build header
+		const header = [
+			`## Research Result\n`,
+			`**Command:** /webfetch ${url} "${query}"\n`,
+			`\n---\n`,
+		].join('');
 
+		// If we have streaming config, stream results directly to it
+		if (config) {
 			// Send initial header as first update
-			toolOnUpdate({
-				content: [{ type: 'text', text: header }],
-				details: {},
-			});
-
-			// Yield to allow header to be displayed before streaming starts
+			sendStreamingUpdate(config, header + '📝 Generating response...', config.initialPhase);
 			await yieldToEventLoop();
 
 			// Stream chunks from pi agent directly to onUpdate
 			const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
 				onChunk: (chunk) => {
-					toolOnUpdate({
+					config.callback?.({
 						content: [{ type: 'text', text: chunk }],
-						details: { streamed: true },
+						details: { phase: config.streamingPhase, url, streamed: true },
 					});
 				},
 			});
@@ -491,6 +553,7 @@ export async function webfetchResearch(
 			const researchDetails: WebfetchDetails = {
 				...fetchResult.details,
 				processedAs: 'research',
+				phase: 'complete',
 			};
 
 			// Return with final analysis (chunks already streamed)
@@ -502,13 +565,6 @@ export async function webfetchResearch(
 
 		// No streaming available, use regular behavior
 		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query);
-
-		// Build response with analysis
-		const header = [
-			`## Research Result\n`,
-			`**Command:** /webfetch ${url} "${query}"\n`,
-			`\n---\n`,
-		].join('');
 
 		const researchDetails: WebfetchDetails = {
 			...fetchResult.details,
@@ -531,7 +587,7 @@ export async function webfetchResearch(
 
 		return {
 			content: [{ type: 'text', text: fallbackHeader + content }],
-			details: { ...fetchResult.details, processedAs: 'error' },
+			details: { ...fetchResult.details, processedAs: 'error', phase: 'error' },
 		};
 	}
 }

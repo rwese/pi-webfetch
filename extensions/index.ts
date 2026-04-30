@@ -1,6 +1,8 @@
 // pi-webfetch extension - main entry point
 
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { WebfetchDetails } from './types.js';
+import { Text } from '@mariozechner/pi-tui';
 import { webfetchResultRenderer } from './message-renderers.js';
 import { Type } from '@sinclair/typebox';
 
@@ -40,13 +42,21 @@ export {
 	getExtensionFromContentType,
 } from './content-types.js';
 
-// Helpers
+// Helpers - includes phase labels and URL utilities
 export {
 	isLikelyBinaryUrl,
 	convertGitHubToRaw,
 	getTempFilePath,
 	formatBytes,
 	truncateToSize,
+	parseUrlForDisplay,
+} from './helpers.js';
+
+// Phase labels for UI
+import {
+	parseUrlForDisplay,
+	FETCH_PHASE_LABELS,
+	getCommandPhaseLabel,
 } from './helpers.js';
 
 // Constants
@@ -76,28 +86,103 @@ export default function (pi: ExtensionAPI): void {
 				),
 			),
 		}),
-		async execute(_toolCallId, params, _signal, _onUpdate) {
-			// Send immediate status before starting the blocking fetch
-			_onUpdate?.({
-				content: [{ type: 'text', text: '🌐 Starting fetch...' }],
-				details: { phase: 'starting' },
-			});
 
-			// Yield to event loop to allow the update to be displayed
+		// Custom rendering for tool call display
+		renderCall(args, theme, _context) {
+			const text = new Text('', 0, 0);
+			let content = theme.fg('toolTitle', theme.bold('🌐 webfetch '));
+			content += theme.fg('muted', parseUrlForDisplay(args.url));
+			if (args.query) {
+				content += ' ' + theme.fg('accent', `"${args.query.slice(0, 50)}${args.query.length > 50 ? '...' : ''}"`);
+			}
+			text.setText(content);
+			return text;
+		},
+
+		// Custom rendering for tool result display
+		renderResult(result, options, theme, context) {
+			const state = context.state as {
+				startedAt?: number;
+				interval?: ReturnType<typeof setInterval>;
+				lastStatus?: string;
+			};
+
+			// Track elapsed time during partial results
+			if (state.startedAt && options.isPartial && !state.interval) {
+				state.interval = setInterval(() => context.invalidate(), 500);
+			}
+
+			// Stop timer on completion
+			if (!options.isPartial || context.isError) {
+				if (state.interval) {
+					clearInterval(state.interval);
+					state.interval = undefined;
+				}
+			}
+
+			const details = result.details as WebfetchDetails | undefined;
+			const phase = details?.phase || 'idle';
+
+			// Build status display
+			const text = new Text('', 0, 0);
+			let content = theme.fg('toolTitle', theme.bold('🌐 webfetch '));
+
+			if (options.isPartial) {
+				// Show phase indicator using shared labels
+				content += theme.fg('muted', FETCH_PHASE_LABELS[phase]);
+
+				// Show elapsed time
+				if (state.startedAt) {
+					const elapsed = ((Date.now() - state.startedAt) / 1000).toFixed(1);
+					content += ' ' + theme.fg('muted', `(${elapsed}s)`);
+				}
+
+				// Show preview of output (only text content)
+				const textContent = result.content.find(c => c.type === 'text');
+				if (textContent?.text) {
+					const preview = textContent.text.split('\n').slice(0, 3).join('\n');
+					content += '\n' + theme.fg('toolOutput', preview);
+				}
+			} else {
+				// Show final status
+				const url = details?.url || '';
+				content += theme.fg('muted', parseUrlForDisplay(url));
+				if (details?.provider) {
+					content += ' ' + theme.fg('muted', `[${details.provider}]`);
+				}
+			}
+
+			text.setText(content);
+			return text;
+		},
+
+		async execute(_toolCallId, params, _signal, onUpdate, _ctx) {
+			// Phase 1: Starting - send initial update
+			onUpdate?.({
+				content: [{ type: 'text', text: '' }],
+				details: { phase: 'starting', url: params.url },
+			});
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
-			// Start the fetch
+			// Phase 2: Fetch with detailed status updates
 			const result = await webfetchResearch(
 				params.url,
 				params.query,
 				undefined,
-				(status) => {
-					_onUpdate?.({
+				// Status callback for non-streaming mode
+				(status, phase) => {
+					onUpdate?.({
 						content: [{ type: 'text', text: status }],
-						details: { phase: 'fetching' },
+						details: { phase: phase || 'fetching', url: params.url },
 					});
 				},
-				_onUpdate,
+				// OnUpdate callback for streaming mode
+				{
+					callback: onUpdate,
+					url: params.url,
+					initialPhase: params.query ? 'analyzing' : 'processing',
+					streamingPhase: 'streaming',
+				},
 			);
 
 			return result;
@@ -117,7 +202,76 @@ export default function (pi: ExtensionAPI): void {
 			),
 			timeout: Type.Optional(Type.Number({ description: 'Timeout in ms (default: 30000)' })),
 		}),
-		async execute(_toolCallId, params, _signal) {
+
+		// Custom rendering for tool call display
+		renderCall(args, theme, _context) {
+			const text = new Text('', 0, 0);
+			let content = theme.fg('toolTitle', theme.bold('🌐 webfetch-spa '));
+			content += theme.fg('muted', parseUrlForDisplay(args.url));
+			if (args.waitFor) {
+				content += ' ' + theme.fg('muted', `(wait: ${args.waitFor})`);
+			}
+			text.setText(content);
+			return text;
+		},
+
+		// Custom rendering for tool result display
+		renderResult(result, options, theme, context) {
+			const state = context.state as {
+				startedAt?: number;
+				interval?: ReturnType<typeof setInterval>;
+			};
+
+			// Track elapsed time during partial results
+			if (state.startedAt && options.isPartial && !state.interval) {
+				state.interval = setInterval(() => context.invalidate(), 500);
+			}
+
+			if (!options.isPartial || context.isError) {
+				if (state.interval) {
+					clearInterval(state.interval);
+					state.interval = undefined;
+				}
+			}
+
+			const details = result.details as WebfetchDetails | undefined;
+			const text = new Text('', 0, 0);
+
+			if (options.isPartial) {
+				let content = theme.fg('toolTitle', theme.bold('🌐 webfetch-spa '));
+				content += theme.fg('muted', '🌍 Loading SPA...');
+				if (state.startedAt) {
+					const elapsed = ((Date.now() - state.startedAt) / 1000).toFixed(1);
+					content += ' ' + theme.fg('muted', `(${elapsed}s)`);
+				}
+				text.setText(content);
+			} else {
+				let content = theme.fg('toolTitle', theme.bold('🌐 webfetch-spa '));
+				const url = details?.url || '';
+				content += theme.fg('muted', parseUrlForDisplay(url));
+				if (details?.provider) {
+					content += ' ' + theme.fg('muted', `[${details.provider}]`);
+				}
+				text.setText(content);
+			}
+
+			return text;
+		},
+
+		async execute(_toolCallId, params, _signal, onUpdate) {
+			// Initial update
+			onUpdate?.({
+				content: [{ type: 'text', text: '' }],
+				details: { phase: 'fetching', url: params.url },
+			});
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			// Processing update
+			onUpdate?.({
+				content: [{ type: 'text', text: '🌍 Loading SPA...' }],
+				details: { phase: 'processing', url: params.url },
+			});
+
 			return await webfetchSPA(
 				params.url,
 				params.waitFor ?? 'networkidle',
@@ -276,12 +430,18 @@ export default function (pi: ExtensionAPI): void {
 				frames: ['🌐', '🌎', '🌍', '🌏', '🌗', '🌘'],
 				intervalMs: 150,
 			});
-			ctx.ui.setStatus('webfetch', query ? '🔍 Researching...' : '🌐 Fetching...');
+			ctx.ui.setStatus('webfetch', query ? '🔍 Starting research...' : '🌐 Starting fetch...');
 
 			try {
-				const result = await webfetchResearch(url, query, undefined, (status) => {
-					ctx.ui.setStatus('webfetch', status);
-				});
+				const result = await webfetchResearch(
+					url,
+					query,
+					undefined,
+					// Phase-based status updates using shared labels
+					(status, phase) => {
+						ctx.ui.setStatus('webfetch', phase ? getCommandPhaseLabel(phase, !!query) : status);
+					},
+				);
 				const text = result.content[0]?.text || 'No content';
 
 				// Add fetched content to context as a message without triggering a new turn
