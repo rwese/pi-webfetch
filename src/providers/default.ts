@@ -5,9 +5,56 @@
  * This is the current/default implementation that provides browser-based fetching.
  */
 
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import { load } from "cheerio";
 import TurndownService from "turndown";
+
+/**
+ * Execute a command asynchronously using spawn
+ */
+function execAsync(
+	command: string,
+	args: string[],
+	options: { timeout?: number; encoding?: string } = {}
+): Promise<string> {
+	return new Promise((resolve, reject) => {
+		const proc = spawn(command, args, {
+			stdio: ['pipe', 'pipe', 'pipe'],
+		});
+
+		let stdout = '';
+		let stderr = '';
+
+		proc.stdout?.on('data', (data: Buffer) => {
+			stdout += data.toString();
+		});
+
+		proc.stderr?.on('data', (data: Buffer) => {
+			stderr += data.toString();
+		});
+
+		if (options.timeout) {
+			const timer = setTimeout(() => {
+				proc.kill('SIGTERM');
+				reject(new Error(`Command timed out after ${options.timeout}ms`));
+			}, options.timeout);
+
+			proc.on('close', () => clearTimeout(timer));
+		}
+
+		proc.on('close', (code) => {
+			if (code === 0) {
+				resolve(stdout);
+			} else {
+				reject(new Error(stderr || `Command exited with code ${code}`));
+			}
+		});
+
+		proc.on('error', (err) => {
+			reject(err);
+		});
+	});
+}
 import {
   type WebfetchProvider,
   type ProviderFetchResult,
@@ -68,12 +115,9 @@ export class DefaultProvider implements WebfetchProvider {
   /**
    * Check if agent-browser CLI is available
    */
-  isAvailable(): boolean {
+  async isAvailable(): Promise<boolean> {
     try {
-      execFileSync("agent-browser", ["--version"], {
-        encoding: "utf-8",
-        stdio: "pipe",
-      });
+      await execAsync("agent-browser", ["--version"]);
       return true;
     } catch {
       return false;
@@ -107,7 +151,7 @@ export class DefaultProvider implements WebfetchProvider {
     const waitFor = config?.waitFor || "networkidle";
     
     // Check availability
-    if (!this.isAvailable()) {
+    if (!(await this.isAvailable())) {
       throw new ProviderErrorClass(
         "agent-browser not installed. Install with: npm i -g agent-browser && agent-browser install",
         this.name
@@ -189,17 +233,14 @@ export class DefaultProvider implements WebfetchProvider {
   /**
    * Safely close browser - used in finally blocks
    */
-  private safeClose(): void {
+  private async safeClose(): Promise<void> {
     if (this.closeTimer) {
       clearTimeout(this.closeTimer);
       this.closeTimer = null;
     }
     if (this.browserOpen) {
       try {
-        execFileSync("agent-browser", ["close"], {
-          encoding: "utf-8",
-          stdio: "pipe",
-        });
+        await execAsync("agent-browser", ["close"]);
       } catch {
         // Ignore close errors
       }
@@ -222,38 +263,26 @@ export class DefaultProvider implements WebfetchProvider {
     try {
       // Open URL or navigate if browser already open
       if (!this.browserOpen) {
-        execFileSync("agent-browser", ["open", url], {
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout,
-        });
+        await execAsync("agent-browser", ["open", url], { timeout });
         this.browserOpen = true;
       } else if (this.currentUrl !== url) {
         // Navigate to new URL if different
-        execFileSync("agent-browser", ["open", url], {
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout,
-        });
+        await execAsync("agent-browser", ["open", url], { timeout });
       }
       this.currentUrl = url;
       
       // Wait for load
-      execFileSync("agent-browser", ["wait", "--load", waitFor], {
-        encoding: "utf-8",
-        stdio: "pipe",
-        timeout,
-      });
+      await execAsync("agent-browser", ["wait", "--load", waitFor], { timeout });
       
       // Reset idle timer on successful navigation
       this.resetCloseTimer();
       
       // Try article first
       try {
-        const articleHtml = execFileSync(
+        const articleHtml = await execAsync(
           "agent-browser",
           ["get", "html", "article"],
-          { encoding: "utf-8", stdio: "pipe", timeout: 5000 }
+          { timeout: 5000 }
         );
         if (articleHtml && articleHtml.trim().length > 100) {
           html = articleHtml;
@@ -266,10 +295,10 @@ export class DefaultProvider implements WebfetchProvider {
       // Try main
       if (!html) {
         try {
-          const mainHtml = execFileSync(
+          const mainHtml = await execAsync(
             "agent-browser",
             ["get", "html", "main"],
-            { encoding: "utf-8", stdio: "pipe", timeout: 5000 }
+            { timeout: 5000 }
           );
           if (mainHtml && mainHtml.trim().length > 100) {
             html = mainHtml;
@@ -282,11 +311,8 @@ export class DefaultProvider implements WebfetchProvider {
       
       // Fallback to body
       if (!html || html.trim().length < 100) {
-        html = execFileSync("agent-browser", ["get", "html", "body"], {
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout,
-        });
+        const bodyHtml = await execAsync("agent-browser", ["get", "html", "body"], { timeout });
+        html = bodyHtml;
         contentSource = "body";
       }
     } finally {
@@ -310,34 +336,19 @@ export class DefaultProvider implements WebfetchProvider {
     try {
       // Open URL or navigate if browser already open
       if (!this.browserOpen) {
-        execFileSync("agent-browser", ["open", url], {
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout,
-        });
+        await execAsync("agent-browser", ["open", url], { timeout });
         this.browserOpen = true;
       } else if (this.currentUrl !== url) {
-        execFileSync("agent-browser", ["open", url], {
-          encoding: "utf-8",
-          stdio: "pipe",
-          timeout,
-        });
+        await execAsync("agent-browser", ["open", url], { timeout });
       }
       this.currentUrl = url;
       
       // Wait for load
-      execFileSync("agent-browser", ["wait", "--load", waitFor], {
-        encoding: "utf-8",
-        stdio: "pipe",
-        timeout,
-      });
+      await execAsync("agent-browser", ["wait", "--load", waitFor], { timeout });
       
       // Get text from body
-      text = execFileSync("agent-browser", ["get", "text", "body"], {
-        encoding: "utf-8",
-        stdio: "pipe",
-        timeout,
-      });
+      const bodyText = await execAsync("agent-browser", ["get", "text", "body"], { timeout });
+      text = bodyText;
       
       // Reset idle timer
       this.resetCloseTimer();

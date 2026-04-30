@@ -118,3 +118,16 @@ describe("Provider closeAll", () => {
     }
   });
 });
+
+describe("Extension closeAllProviders", () => {
+  it("closeAllProviders is exported and callable", async () => {
+    // Dynamic import to test the actual function
+    const module = await import("../extensions/fetch.js");
+    expect(typeof module.closeAllProviders).toBe("function");
+  });
+
+  it("closeAllProviders resolves without error", async () => {
+    const module = await import("../extensions/fetch.js");
+    await expect(module.closeAllProviders()).resolves.not.toThrow();
+  });
+});

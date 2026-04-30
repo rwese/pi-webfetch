@@ -76,8 +76,30 @@ export default function (pi: ExtensionAPI): void {
 				),
 			),
 		}),
-		async execute(_toolCallId, params, _signal) {
-			const result = await webfetchResearch(params.url, params.query);
+		async execute(_toolCallId, params, _signal, _onUpdate) {
+			// Send immediate status before starting the blocking fetch
+			_onUpdate?.({
+				content: [{ type: 'text', text: '🌐 Starting fetch...' }],
+				details: { phase: 'starting' },
+			});
+
+			// Yield to event loop to allow the update to be displayed
+			await new Promise((resolve) => setTimeout(resolve, 0));
+
+			// Start the fetch
+			const result = await webfetchResearch(
+				params.url,
+				params.query,
+				undefined,
+				(status) => {
+					_onUpdate?.({
+						content: [{ type: 'text', text: status }],
+						details: { phase: 'fetching' },
+					});
+				},
+				_onUpdate,
+			);
+
 			return result;
 		},
 	});

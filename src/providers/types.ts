@@ -111,7 +111,7 @@ export interface WebfetchProvider {
   /**
    * Check if this provider is available/installed
    */
-  isAvailable(): boolean;
+  isAvailable(): Promise<boolean> | boolean;
   
   /**
    * Detect URL characteristics to help with provider selection

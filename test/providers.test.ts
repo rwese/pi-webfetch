@@ -110,8 +110,8 @@ describe("ProviderManager", () => {
   });
 
   describe("detectUrl", () => {
-    it("delegates to available provider", () => {
-      const detection = manager.detectUrl("https://github.com/user/repo");
+    it("delegates to available provider", async () => {
+      const detection = await manager.detectUrl("https://github.com/user/repo");
       // Should delegate to default provider
       expect(detection).toBeDefined();
       expect(typeof detection.isGitHub).toBe("boolean");
@@ -120,32 +120,32 @@ describe("ProviderManager", () => {
       expect(typeof detection.isLikelyBinary).toBe("boolean");
     });
 
-    it("detects GitHub URLs", () => {
-      const detection = manager.detectUrl("https://github.com/user/repo");
+    it("detects GitHub URLs", async () => {
+      const detection = await manager.detectUrl("https://github.com/user/repo");
       expect(detection.isGitHub).toBe(true);
     });
 
-    it("detects Reddit URLs", () => {
-      const detection = manager.detectUrl("https://www.reddit.com/r/programming");
+    it("detects Reddit URLs", async () => {
+      const detection = await manager.detectUrl("https://www.reddit.com/r/programming");
       expect(detection.isReddit).toBe(true);
     });
 
-    it("detects binary URLs", () => {
-      const detection = manager.detectUrl("https://example.com/file.pdf");
+    it("detects binary URLs", async () => {
+      const detection = await manager.detectUrl("https://example.com/file.pdf");
       expect(detection.isLikelyBinary).toBe(true);
     });
 
-    it("detects SPAs", () => {
-      const detection = manager.detectUrl("https://notion.so/workspace");
+    it("detects SPAs", async () => {
+      const detection = await manager.detectUrl("https://notion.so/workspace");
       expect(detection.isLikelySPA).toBe(true);
     });
 
-    it("returns safe defaults when no providers available", () => {
+    it("returns safe defaults when no providers available", async () => {
       // Create manager with no enabled providers
       const emptyManager = createProviderManager({
         enabledProviders: ["nonexistent"],
       });
-      const detection = emptyManager.detectUrl("https://example.com");
+      const detection = await emptyManager.detectUrl("https://example.com");
       
       expect(detection.isGitHub).toBe(false);
       expect(detection.isReddit).toBe(false);
@@ -172,16 +172,16 @@ describe("ProviderManager", () => {
     expect(sorted[0].priority).toBeGreaterThanOrEqual(sorted[1].priority);
   });
 
-  it("returns available providers", () => {
-    const available = manager.getAvailableProviders();
+  it("returns available providers", async () => {
+    const available = await manager.getAvailableProviders();
     expect(Array.isArray(available)).toBe(true);
   });
 
-  it("selects provider for GitHub URLs based on availability", () => {
-    const provider = manager.selectProvider("https://github.com/user/repo");
+  it("selects provider for GitHub URLs based on availability", async () => {
+    const provider = await manager.selectProvider("https://github.com/user/repo");
     // Should select the first available provider (gh-cli preferred, then clawfetch, then default)
     // gh-cli is preferred for GitHub if available and authenticated
-    const available = manager.getAvailableProviders();
+    const available = await manager.getAvailableProviders();
     if (available.some(p => p.name === "gh-cli")) {
       expect(provider?.name).toBe("gh-cli");
     } else if (available.some(p => p.name === "clawfetch")) {
@@ -192,17 +192,17 @@ describe("ProviderManager", () => {
     }
   });
 
-  it("selects default provider for regular URLs", () => {
+  it("selects default provider for regular URLs", async () => {
     // Force default priority by checking available
-    const available = manager.getAvailableProviders();
+    const available = await manager.getAvailableProviders();
     if (available.length > 0) {
-      const provider = manager.selectProvider("https://example.com/article");
+      const provider = await manager.selectProvider("https://example.com/article");
       expect(provider).toBeDefined();
     }
   });
 
-  it("returns null for binary URLs", () => {
-    const provider = manager.selectProvider("https://example.com/file.pdf");
+  it("returns null for binary URLs", async () => {
+    const provider = await manager.selectProvider("https://example.com/file.pdf");
     // Binary URLs should not select any provider (handled differently)
     // The actual behavior depends on implementation
     expect(provider === null || provider === undefined || provider.name).toBeTruthy();
@@ -217,19 +217,19 @@ describe("ProviderManager", () => {
     expect(provider).toBeUndefined();
   });
 
-  it("has available provider check", () => {
-    const hasProvider = manager.hasAvailableProvider();
+  it("has available provider check", async () => {
+    const hasProvider = await manager.hasAvailableProvider();
     expect(typeof hasProvider).toBe("boolean");
   });
 });
 
 describe("ProviderManager with config", () => {
-  it("respects forced provider config when available", () => {
+  it("respects forced provider config when available", async () => {
     const manager = createProviderManager({
       forcedProvider: "default",
     });
     
-    const provider = manager.selectProvider("https://example.com");
+    const provider = await manager.selectProvider("https://example.com");
     // Default is always available (agent-browser check)
     expect(provider?.name).toBe("default");
   });
@@ -265,9 +265,9 @@ describe("ProviderManager detectUrl method", () => {
     expect(typeof manager.detectUrl).toBe("function");
   });
 
-  it("detectUrl returns URLDetection type", () => {
+  it("detectUrl returns URLDetection type", async () => {
     const manager = createProviderManager();
-    const result = manager.detectUrl("https://example.com");
+    const result = await manager.detectUrl("https://example.com");
     
     expect(result).toHaveProperty("isGitHub");
     expect(result).toHaveProperty("isReddit");
@@ -275,7 +275,7 @@ describe("ProviderManager detectUrl method", () => {
     expect(result).toHaveProperty("isLikelyBinary");
   });
 
-  it("detectUrl works with all URL types", () => {
+  it("detectUrl works with all URL types", async () => {
     const manager = createProviderManager();
     
     const testCases = [
@@ -286,29 +286,30 @@ describe("ProviderManager detectUrl method", () => {
     ];
     
     for (const tc of testCases) {
-      const result = manager.detectUrl(tc.url);
+      const result = await manager.detectUrl(tc.url);
       for (const [key, value] of Object.entries(tc.expected)) {
         expect(result[key as keyof typeof result]).toBe(value);
       }
     }
   });
 
-  it("detectUrl uses first available provider", () => {
+  it("detectUrl uses first available provider", async () => {
     const manager = createProviderManager();
     
     // Get what the first provider detects
-    const firstProvider = manager.getAvailableProviders()[0];
+    const available = await manager.getAvailableProviders();
+    const firstProvider = available[0];
     const providerResult = firstProvider.detectUrl("https://github.com/user/repo");
     
     // Manager should delegate to first provider
-    const managerResult = manager.detectUrl("https://github.com/user/repo");
+    const managerResult = await manager.detectUrl("https://github.com/user/repo");
     
     expect(managerResult.isGitHub).toBe(providerResult.isGitHub);
   });
 
-  it("detectUrl returns safe defaults when no providers", () => {
+  it("detectUrl returns safe defaults when no providers", async () => {
     const emptyManager = createProviderManager({ enabledProviders: ["nonexistent"] });
-    const result = emptyManager.detectUrl("https://example.com");
+    const result = await emptyManager.detectUrl("https://example.com");
     
     expect(result.isGitHub).toBe(false);
     expect(result.isReddit).toBe(false);

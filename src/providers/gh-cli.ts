@@ -5,7 +5,54 @@
  * Falls back when no browser provider is available or as an alternative.
  */
 
-import { execFileSync, execSync, spawn } from "node:child_process";
+import { spawn } from "node:child_process";
+
+/**
+ * Execute a command asynchronously using spawn
+ */
+function execAsync(
+  command: string,
+  args: string[],
+  options: { timeout?: number } = {}
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    if (options.timeout) {
+      const timer = setTimeout(() => {
+        proc.kill('SIGTERM');
+        reject(new Error(`Command timed out after ${options.timeout}ms`));
+      }, options.timeout);
+
+      proc.on('close', () => clearTimeout(timer));
+    }
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(stderr || `Command exited with code ${code}`));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
 import {
   type WebfetchProvider,
   type ProviderFetchResult,
@@ -35,9 +82,9 @@ export class GhCliProvider implements WebfetchProvider {
   private authenticated: boolean | null = null;
 
   /**
-   * Find gh binary and check if authenticated
+   * Find gh binary and check if authenticated (async version)
    */
-  private findGh(): string | null {
+  private async findGhAsync(): Promise<string | null> {
     if (this.ghPath !== null) {
       return this.ghPath;
     }
@@ -51,10 +98,7 @@ export class GhCliProvider implements WebfetchProvider {
 
     for (const candidate of candidates) {
       try {
-        execFileSync(candidate, ["--version"], {
-          encoding: "utf-8",
-          stdio: "pipe",
-        });
+        await execAsync(candidate, ["--version"]);
         this.ghPath = candidate;
         return candidate;
       } catch {
@@ -67,20 +111,17 @@ export class GhCliProvider implements WebfetchProvider {
   }
 
   /**
-   * Check if gh CLI is available and authenticated
+   * Check if gh CLI is available and authenticated (async version)
    */
-  isAvailable(): boolean {
-    const gh = this.findGh();
+  async isAvailable(): Promise<boolean> {
+    const gh = await this.findGhAsync();
     if (!gh) {
       return false;
     }
 
     if (this.authenticated === null) {
       try {
-        execFileSync(gh, ["auth", "status"], {
-          encoding: "utf-8",
-          stdio: "pipe",
-        });
+        await execAsync(gh, ["auth", "status"]);
         this.authenticated = true;
       } catch {
         this.authenticated = false;
@@ -168,7 +209,7 @@ export class GhCliProvider implements WebfetchProvider {
    * Main fetch implementation using gh CLI
    */
   async fetch(url: string, config?: ProviderConfig): Promise<ProviderFetchResult> {
-    const gh = this.findGh();
+    const gh = await this.findGhAsync();
 
     if (!gh) {
       throw new ProviderError(

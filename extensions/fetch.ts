@@ -1,6 +1,7 @@
 // Fetch functions for webfetch extension
 
 import type { WebfetchDetails, FetchResult, ProviderConfig, ProviderFetchResult } from './types.js';
+import type { AgentToolUpdateCallback } from '@mariozechner/pi-coding-agent';
 import { spawnPiAgent, type SpawnPiAgentResult } from './pi-agent.js';
 import {
 	convertGitHubToRaw,
@@ -18,6 +19,12 @@ const MAX_MARKDOWN_SIZE = 100 * 1024;
 // Lazy-initialized provider manager
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let providerManager: any = null;
+
+/** Close all providers (cleanup browser resources) */
+export async function closeAllProviders(): Promise<void> {
+	const manager = await getProviderManager();
+	await manager.closeAll();
+}
 
 async function getProviderManager() {
 	if (!providerManager) {
@@ -368,11 +375,18 @@ export async function getProviderStatus(): Promise<
 > {
 	const manager = await getProviderManager();
 	const providers = manager.getAll();
-	return providers.map((p: { name: string; isAvailable: () => boolean; priority: number }) => ({
-		name: p.name,
-		available: p.isAvailable(),
-		priority: p.priority,
-	}));
+	const results = await Promise.all(
+		providers.map(async (p: { name: string; priority: number; isAvailable: () => boolean | Promise<boolean> }) => {
+			const availableResult = p.isAvailable();
+			const available = availableResult instanceof Promise ? await availableResult : availableResult;
+			return {
+				name: p.name,
+				available,
+				priority: p.priority,
+			};
+		})
+	);
+	return results;
 }
 
 // ============================================================================
@@ -389,6 +403,15 @@ export interface ResearchResult {
 
 /** Status callback for long-running operations */
 export type StatusCallback = (status: string) => void;
+
+/** OnUpdate callback type alias for clarity */
+type OnUpdateCallback = AgentToolUpdateCallback<Record<string, unknown>>;
+
+/** Yield to event loop to allow UI updates to be processed */
+function yieldToEventLoop(): Promise<void> {
+	// Use setTimeout(0) which is available in both browser and Node.js
+	return new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 /**
  * Fetch a URL and analyze its content based on a research query
@@ -412,6 +435,7 @@ export async function webfetchResearch(
 	query?: string,
 	fetchFn?: typeof fetch,
 	onStatus?: StatusCallback,
+	toolOnUpdate?: OnUpdateCallback,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
@@ -436,6 +460,47 @@ export async function webfetchResearch(
 	try {
 		// Spawn pi agent to analyze the content
 		onStatus?.('asking sub agent...');
+
+		// If tool has onUpdate callback, stream results directly to it
+		if (toolOnUpdate) {
+			const header = [
+				`## Research Result\n`,
+				`**Command:** /webfetch ${url} "${query}"\n`,
+				`\n---\n`,
+			].join('');
+
+			// Send initial header as first update
+			toolOnUpdate({
+				content: [{ type: 'text', text: header }],
+				details: {},
+			});
+
+			// Yield to allow header to be displayed before streaming starts
+			await yieldToEventLoop();
+
+			// Stream chunks from pi agent directly to onUpdate
+			const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
+				onChunk: (chunk) => {
+					toolOnUpdate({
+						content: [{ type: 'text', text: chunk }],
+						details: { streamed: true },
+					});
+				},
+			});
+
+			const researchDetails: WebfetchDetails = {
+				...fetchResult.details,
+				processedAs: 'research',
+			};
+
+			// Return with final analysis (chunks already streamed)
+			return {
+				content: [{ type: 'text', text: header + agentResult.analysis }],
+				details: researchDetails,
+			};
+		}
+
+		// No streaming available, use regular behavior
 		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query);
 
 		// Build response with analysis

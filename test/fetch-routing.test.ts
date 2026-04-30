@@ -19,10 +19,10 @@ describe("Fetch Routing Logic", () => {
 			manager = createProviderManager();
 		});
 
-		it("should select gh-cli for github.com web URLs (if available and authenticated)", () => {
-			const provider = manager.selectProvider("https://github.com/user/repo");
+		it("should select gh-cli for github.com web URLs (if available and authenticated)", async () => {
+			const provider = await manager.selectProvider("https://github.com/user/repo");
 			// gh-cli is preferred for GitHub URLs (structured data), then clawfetch
-			const available = manager.getAvailableProviders();
+			const available = await manager.getAvailableProviders();
 			if (available.some(p => p.name === "gh-cli")) {
 				expect(provider?.name).toBe("gh-cli");
 			} else if (available.some(p => p.name === "clawfetch")) {
@@ -30,8 +30,8 @@ describe("Fetch Routing Logic", () => {
 			}
 		});
 
-		it("should NOT select browser provider for raw.githubusercontent.com URLs", () => {
-			const provider = manager.selectProvider(
+		it("should NOT select browser provider for raw.githubusercontent.com URLs", async () => {
+			const provider = await manager.selectProvider(
 				"https://raw.githubusercontent.com/user/repo/main/file.txt"
 			);
 			// Raw URLs should go through static fetch, not browser
@@ -40,8 +40,8 @@ describe("Fetch Routing Logic", () => {
 			expect(provider).toBeDefined(); // Provider may be selected, but routing in fetch.ts matters
 		});
 
-		it("should select provider for github.com blob URLs", () => {
-			const provider = manager.selectProvider(
+		it("should select provider for github.com blob URLs", async () => {
+			const provider = await manager.selectProvider(
 				"https://github.com/user/repo/blob/main/README.md"
 			);
 			expect(provider).toBeDefined();
@@ -56,8 +56,8 @@ describe("Fetch Routing Logic", () => {
 		});
 
 		// BUG: raw.githubusercontent.com should have isGitHub = true
-		it("raw.githubusercontent.com should have isGitHub = true", () => {
-			const detection = manager.detectUrl(
+		it("raw.githubusercontent.com should have isGitHub = true", async () => {
+			const detection = await manager.detectUrl(
 				"https://raw.githubusercontent.com/nix-community/disko/master/lib/types/gpt.nix"
 			);
 			expect(detection.isGitHub).toBe(true);

@@ -1,5 +1,3 @@
-/* global setTimeout, clearTimeout:readonly */
-
 /**
  * Pi Agent spawning for research queries
  *
@@ -16,6 +14,8 @@ export interface SpawnPiAgentOptions {
 	cwd?: string;
 	/** Environment variables */
 	env?: Record<string, string>;
+	/** Callback for streaming output chunks (for live UI updates) */
+	onChunk?: (chunk: string) => void;
 }
 
 export interface SpawnPiAgentResult {
@@ -71,7 +71,7 @@ export async function spawnPiAgent(
 	query: string,
 	options: SpawnPiAgentOptions = {},
 ): Promise<SpawnPiAgentResult> {
-	const { timeout = 60000, cwd: cwdOption = cwd(), env: envOption = {} } = options;
+	const { timeout = 60000, cwd: cwdOption = cwd(), env: envOption = {}, onChunk } = options;
 
 	// Dynamic import for better testability
 	const { spawn } = await import('node:child_process');
@@ -106,8 +106,11 @@ export async function spawnPiAgent(
 		}, timeout);
 
 		// Collect stdout - this is the analysis result
+		// Stream chunks if callback provided for live UI updates
 		proc.stdout?.on('data', (data: Buffer) => {
-			stdout += data.toString();
+			const chunk = data.toString();
+			stdout += chunk;
+			onChunk?.(chunk);
 		});
 
 		// Collect stderr for error reporting

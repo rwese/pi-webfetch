@@ -87,21 +87,21 @@ describe("ProviderManager URL Detection", () => {
 	});
 
 	describe("detectUrl", () => {
-		it("delegates to available provider for github.com", () => {
-			const detection = manager.detectUrl("https://github.com/user/repo");
+		it("delegates to available provider for github.com", async () => {
+			const detection = await manager.detectUrl("https://github.com/user/repo");
 			expect(detection.isGitHub).toBe(true);
 		});
 
 		// BUG: raw.githubusercontent.com is NOT detected as GitHub
-		it("detects raw.githubusercontent.com as GitHub", () => {
-			const detection = manager.detectUrl(
+		it("detects raw.githubusercontent.com as GitHub", async () => {
+			const detection = await manager.detectUrl(
 				"https://raw.githubusercontent.com/nix-community/disko/master/lib/types/gpt.nix"
 			);
 			expect(detection.isGitHub).toBe(true);
 		});
 
-		it("does not mark raw URLs as SPA", () => {
-			const detection = manager.detectUrl(
+		it("does not mark raw URLs as SPA", async () => {
+			const detection = await manager.detectUrl(
 				"https://raw.githubusercontent.com/user/repo/HEAD/file.txt"
 			);
 			expect(detection.isLikelySPA).toBe(false);

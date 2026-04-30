@@ -6,7 +6,7 @@
  * Plus fast paths for GitHub, Reddit RSS, and FlareSolverr support.
  */
 
-import { execFileSync } from "node:child_process";
+import { spawn } from "node:child_process";
 import {
   type WebfetchProvider,
   type ProviderFetchResult,
@@ -16,6 +16,54 @@ import {
   type ProviderError,
   ProviderError as ProviderErrorClass,
 } from "./types";
+
+/**
+ * Execute a command asynchronously using spawn
+ */
+function execAsync(
+  command: string,
+  args: string[],
+  options: { timeout?: number; env?: Record<string, string> } = {}
+): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(command, args, {
+      stdio: ['pipe', 'pipe', 'pipe'],
+      env: { ...process.env, ...options.env },
+    });
+
+    let stdout = '';
+    let stderr = '';
+
+    proc.stdout?.on('data', (data: Buffer) => {
+      stdout += data.toString();
+    });
+
+    proc.stderr?.on('data', (data: Buffer) => {
+      stderr += data.toString();
+    });
+
+    if (options.timeout) {
+      const timer = setTimeout(() => {
+        proc.kill('SIGTERM');
+        reject(new Error(`Command timed out after ${options.timeout}ms`));
+      }, options.timeout);
+
+      proc.on('close', () => clearTimeout(timer));
+    }
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve(stdout);
+      } else {
+        reject(new Error(stderr || `Command exited with code ${code}`));
+      }
+    });
+
+    proc.on('error', (err) => {
+      reject(err);
+    });
+  });
+}
 
 /**
  * Parse clawfetch output into structured result
@@ -50,9 +98,9 @@ export class ClawfetchProvider implements WebfetchProvider {
   private clawfetchPath: string | null = null;
   
   /**
-   * Find clawfetch binary
+   * Find clawfetch binary (async version)
    */
-  private findClawfetch(): string | null {
+  private async findClawfetchAsync(): Promise<string | null> {
     if (this.clawfetchPath) {
       return this.clawfetchPath;
     }
@@ -67,10 +115,7 @@ export class ClawfetchProvider implements WebfetchProvider {
     
     for (const candidate of candidates) {
       try {
-        execFileSync(candidate, ["--help"], {
-          encoding: "utf-8",
-          stdio: "pipe",
-        });
+        await execAsync(candidate, ["--help"]);
         this.clawfetchPath = candidate;
         return candidate;
       } catch {
@@ -84,8 +129,8 @@ export class ClawfetchProvider implements WebfetchProvider {
   /**
    * Check if clawfetch CLI is available
    */
-  isAvailable(): boolean {
-    return this.findClawfetch() !== null;
+  async isAvailable(): Promise<boolean> {
+    return (await this.findClawfetchAsync()) !== null;
   }
   
   /**
@@ -112,7 +157,7 @@ export class ClawfetchProvider implements WebfetchProvider {
    * Main fetch implementation using clawfetch CLI
    */
   async fetch(url: string, config?: ProviderConfig): Promise<ProviderFetchResult> {
-    const clawfetch = this.findClawfetch();
+    const clawfetch = await this.findClawfetchAsync();
     
     if (!clawfetch) {
       throw new ProviderErrorClass(
@@ -124,7 +169,7 @@ export class ClawfetchProvider implements WebfetchProvider {
     const timeout = config?.timeout || 60000;
     
     try {
-      const output = this.execClawfetch(clawfetch, url, timeout);
+      const output = await this.execClawfetchAsync(clawfetch, url, timeout);
       return this.parseOutput(output, url);
     } catch (error) {
       if (error instanceof ProviderErrorClass) {
@@ -139,21 +184,19 @@ export class ClawfetchProvider implements WebfetchProvider {
   }
   
   /**
-   * Execute clawfetch CLI
+   * Execute clawfetch CLI (async version)
    */
-  private execClawfetch(clawfetch: string, url: string, timeout: number): string {
+  private async execClawfetchAsync(clawfetch: string, url: string, timeout: number): Promise<string> {
     try {
-      return execFileSync(clawfetch, [url], {
-        encoding: "utf-8",
-        stdio: "pipe",
+      const env: Record<string, string> = {};
+      if (process.env.HTTP_PROXY) env.HTTP_PROXY = process.env.HTTP_PROXY;
+      if (process.env.HTTPS_PROXY) env.HTTPS_PROXY = process.env.HTTPS_PROXY;
+      
+      const stdout = await execAsync(clawfetch, [url], {
         timeout: Math.floor(timeout / 1000),
-        env: {
-          ...process.env,
-          // Pass proxy if configured
-          ...(process.env.HTTP_PROXY && { HTTP_PROXY: process.env.HTTP_PROXY }),
-          ...(process.env.HTTPS_PROXY && { HTTPS_PROXY: process.env.HTTPS_PROXY }),
-        },
+        env: Object.keys(env).length > 0 ? env : undefined,
       });
+      return stdout;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       throw new ProviderErrorClass(`clawfetch execution failed: ${message}`, this.name);

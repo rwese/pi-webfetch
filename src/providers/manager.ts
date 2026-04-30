@@ -103,27 +103,43 @@ export class ProviderManager {
   }
 
   /**
+   * Check if provider is available (handles sync and async)
+   */
+  private async isProviderAvailable(provider: WebfetchProvider): Promise<boolean> {
+    const result = provider.isAvailable();
+    return result instanceof Promise ? await result : result;
+  }
+
+  /**
    * Get all available providers (that pass isAvailable check)
    */
-  getAvailableProviders(): WebfetchProvider[] {
-    return this.getSortedProviders().filter((p) => p.isAvailable());
+  async getAvailableProviders(): Promise<WebfetchProvider[]> {
+    const sorted = this.getSortedProviders();
+    const available: WebfetchProvider[] = [];
+    for (const p of sorted) {
+      if (await this.isProviderAvailable(p)) {
+        available.push(p);
+      }
+    }
+    return available;
   }
 
   /**
    * Check if any provider is available
    */
-  hasAvailableProvider(): boolean {
-    return this.getAvailableProviders().length > 0;
+  async hasAvailableProvider(): Promise<boolean> {
+    const available = await this.getAvailableProviders();
+    return available.length > 0;
   }
 
   /**
    * Select the best provider for a URL
    */
-  selectProvider(url: string, config?: FetchConfig): WebfetchProvider | null {
+  async selectProvider(url: string, config?: FetchConfig): Promise<WebfetchProvider | null> {
     // If forced provider is configured, use it
     if (this.config.forcedProvider) {
       const forced = this.providers.get(this.config.forcedProvider);
-      if (forced && forced.isAvailable()) {
+      if (forced && await this.isProviderAvailable(forced)) {
         return forced;
       }
     }
@@ -131,13 +147,13 @@ export class ProviderManager {
     // If configured in options, use that
     if (config && "provider" in config) {
       const forced = this.providers.get((config as { provider?: string }).provider || "");
-      if (forced && forced.isAvailable()) {
+      if (forced && await this.isProviderAvailable(forced)) {
         return forced;
       }
     }
 
     // Auto-detect: get all available providers sorted by priority
-    const available = this.getAvailableProviders();
+    const available = await this.getAvailableProviders();
 
     if (available.length === 0) {
       return null;
@@ -149,12 +165,12 @@ export class ProviderManager {
     // GitHub URLs: prefer gh-cli (authenticated, structured data)
     if (urlDetection.isGitHub) {
       const ghCli = this.providers.get("gh-cli");
-      if (ghCli?.isAvailable()) {
+      if (ghCli && await this.isProviderAvailable(ghCli)) {
         return ghCli;
       }
       // Fall back to clawfetch if gh-cli not available
       const clawfetch = this.providers.get("clawfetch");
-      if (clawfetch?.isAvailable()) {
+      if (clawfetch && await this.isProviderAvailable(clawfetch)) {
         return clawfetch;
       }
     }
@@ -162,7 +178,7 @@ export class ProviderManager {
     // Reddit URLs: prefer clawfetch (has RSS fast path)
     if (urlDetection.isReddit) {
       const clawfetch = this.providers.get("clawfetch");
-      if (clawfetch?.isAvailable()) {
+      if (clawfetch && await this.isProviderAvailable(clawfetch)) {
         return clawfetch;
       }
     }
@@ -188,11 +204,11 @@ export class ProviderManager {
     const attemptedProviders: string[] = [];
 
     // Get the selected primary provider
-    let provider = this.selectProvider(url, config);
+    let provider = await this.selectProvider(url, config);
 
     // If forced provider not available, fall back to auto-selection
     if (!provider && this.config.forcedProvider) {
-      provider = this.selectProvider(url);
+      provider = await this.selectProvider(url);
     }
 
     if (!provider) {
@@ -211,7 +227,7 @@ export class ProviderManager {
       return result;
     } catch (primaryError) {
       // Primary failed, try fallback providers
-      const available = this.getAvailableProviders();
+      const available = await this.getAvailableProviders();
 
       for (const fallback of available) {
         if (fallback.name === provider.name) {
@@ -244,8 +260,8 @@ export class ProviderManager {
   /**
    * Detect URL type using the first available provider
    */
-  detectUrl(url: string): URLDetection {
-    const available = this.getAvailableProviders();
+  async detectUrl(url: string): Promise<URLDetection> {
+    const available = await this.getAvailableProviders();
     if (available.length === 0) {
       return {
         isGitHub: false,
