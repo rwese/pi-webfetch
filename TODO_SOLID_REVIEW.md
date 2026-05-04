@@ -48,10 +48,10 @@
 ### MEDIUM Priority
 
 #### 6. Split `src/providers/default.ts` (SRP)
-- [ ] Create `BrowserManager` class - browser lifecycle
-- [ ] Extract `TurndownService` configuration
-- [ ] Create URL detection utilities
-- [ ] Refactor `DefaultProvider` to use composed dependencies
+- [x] Create `BrowserManager` class - browser lifecycle
+- [x] Extract `TurndownService` configuration
+- [x] Create URL detection utilities
+- [x] Refactor `DefaultProvider` to use composed dependencies
 
 #### 7. Split `src/providers/gh-cli.ts` (SRP)
 - [ ] Create `GitHubUrlParser` - URL parsing logic
