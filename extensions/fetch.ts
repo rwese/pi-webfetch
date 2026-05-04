@@ -19,22 +19,42 @@ import { removeMarkdownAnchors, extractEmbeddedImages } from './markdown.js';
 
 const MAX_MARKDOWN_SIZE = 100 * 1024;
 
-// Lazy-initialized provider manager
+/**
+ * Session-scoped provider managers
+ * Each pi session gets its own provider manager with fresh browser state
+ */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-let providerManager: any = null;
+const sessionProviders = new Map<symbol, any>();
 
-/** Close all providers (cleanup browser resources) */
-export async function closeAllProviders(): Promise<void> {
-	const manager = await getProviderManager();
-	await manager.closeAll();
+/**
+ * Get the provider manager for the current session
+ * Creates a new one if not exists (session-scoped browser state)
+ */
+export async function getProviderManager(): Promise<any> {
+	const key = Symbol('session');
+
+	if (!sessionProviders.has(key)) {
+		const module = await import('../src/providers/manager.js');
+		sessionProviders.set(key, new module.ProviderManager());
+	}
+	return sessionProviders.get(key);
 }
 
-async function getProviderManager() {
-	if (!providerManager) {
-		const module = await import('../src/providers/manager.js');
-		providerManager = new module.ProviderManager();
+/** Close all providers for a specific session */
+export async function closeAllProviders(sessionId?: symbol): Promise<void> {
+	const key = sessionId ?? Symbol('default');
+	const manager = sessionProviders.get(key);
+	if (manager) {
+		await manager.closeAll();
+		sessionProviders.delete(key);
 	}
-	return providerManager;
+}
+
+/** Close all providers across all sessions */
+export async function closeAllSessionsProviders(): Promise<void> {
+	await Promise.all(
+		Array.from(sessionProviders.keys()).map((key) => closeAllProviders(key as symbol))
+	);
 }
 
 /** Build the fetch result header with metadata */

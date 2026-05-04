@@ -25,7 +25,7 @@ import {
 	downloadFile,
 	getProviderStatus,
 	webfetchResearch,
-	closeAllProviders,
+	closeAllSessionsProviders,
 } from './fetch.js';
 
 // HTML utilities
@@ -356,7 +356,7 @@ export default function (pi: ExtensionAPI): void {
 
 	// Register session shutdown handler to clean up browser resources
 	pi.on('session_shutdown', async () => {
-		await closeAllProviders();
+		await closeAllSessionsProviders();
 	});
 
 	// Flash command: /webfetch <url> - Fetch a URL directly
