@@ -81,12 +81,39 @@ interface ClawfetchOutput {
 }
 
 /**
+ * Simple async mutex for preventing concurrent access
+ */
+class ClawfetchMutex {
+  private locked = false;
+  private waitQueue: Array<() => void> = [];
+
+  async acquire(): Promise<void> {
+    if (!this.locked) {
+      this.locked = true;
+      return;
+    }
+    return new Promise<void>((resolve) => {
+      this.waitQueue.push(resolve);
+    });
+  }
+
+  release(): void {
+    if (this.waitQueue.length > 0) {
+      const next = this.waitQueue.shift();
+      next!();
+    } else {
+      this.locked = false;
+    }
+  }
+}
+
+/**
  * Clawfetch provider using the clawfetch CLI
  */
 export class ClawfetchProvider implements WebfetchProvider {
   readonly name = "clawfetch";
   readonly priority = 5; // Lower than default (tried second)
-  
+
   readonly capabilities: ProviderCapabilities = {
     supportsSPA: true,
     supportsGitHubFastPath: true,
@@ -94,9 +121,11 @@ export class ClawfetchProvider implements WebfetchProvider {
     supportsBotProtection: false, // Requires FlareSolverr externally
     returnsMetadata: true, // Returns rich metadata
   };
-  
+
+  /** Mutex to prevent concurrent clawfetch invocations */
+  private mutex = new ClawfetchMutex();
   private clawfetchPath: string | null = null;
-  
+
   /**
    * Find clawfetch binary (async version)
    */
@@ -104,7 +133,7 @@ export class ClawfetchProvider implements WebfetchProvider {
     if (this.clawfetchPath) {
       return this.clawfetchPath;
     }
-    
+
     // Check common locations
     const candidates = [
       "clawfetch", // In PATH
@@ -112,7 +141,7 @@ export class ClawfetchProvider implements WebfetchProvider {
       "/usr/local/bin/clawfetch",
       "/usr/bin/clawfetch",
     ];
-    
+
     for (const candidate of candidates) {
       try {
         await execAsync(candidate, ["--help"]);
@@ -122,29 +151,29 @@ export class ClawfetchProvider implements WebfetchProvider {
         // Try next candidate
       }
     }
-    
+
     return null;
   }
-  
+
   /**
    * Check if clawfetch CLI is available
    */
   async isAvailable(): Promise<boolean> {
     return (await this.findClawfetchAsync()) !== null;
   }
-  
+
   /**
    * Detect URL characteristics
    */
   detectUrl(url: string): URLDetection {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
-    
+
     // GitHub URLs include both web interface and raw content URLs
-    const isGitHubHost = hostname === "github.com" || 
-                         hostname === "www.github.com" || 
+    const isGitHubHost = hostname === "github.com" ||
+                         hostname === "www.github.com" ||
                          hostname === "raw.githubusercontent.com";
-    
+
     return {
       isGitHub: isGitHubHost,
       isReddit: hostname.includes(".reddit.com") || hostname === "reddit.com",
@@ -152,22 +181,25 @@ export class ClawfetchProvider implements WebfetchProvider {
       isLikelyBinary: this.checkLikelyBinary(url),
     };
   }
-  
+
   /**
-   * Main fetch implementation using clawfetch CLI
+   * Main fetch implementation using clawfetch CLI - protected by mutex
    */
   async fetch(url: string, config?: ProviderConfig): Promise<ProviderFetchResult> {
     const clawfetch = await this.findClawfetchAsync();
-    
+
     if (!clawfetch) {
       throw new ProviderErrorClass(
         "clawfetch not installed. Install with: npm install -g clawfetch",
         this.name
       );
     }
-    
+
     const timeout = config?.timeout || 60000;
-    
+
+    // Acquire mutex to prevent concurrent Playwright instances
+    await this.mutex.acquire();
+
     try {
       const output = await this.execClawfetchAsync(clawfetch, url, timeout);
       return this.parseOutput(output, url);
@@ -180,9 +212,11 @@ export class ClawfetchProvider implements WebfetchProvider {
         this.name,
         error instanceof Error ? error : undefined
       );
+    } finally {
+      this.mutex.release();
     }
   }
-  
+
   /**
    * Execute clawfetch CLI (async version)
    */
@@ -191,7 +225,7 @@ export class ClawfetchProvider implements WebfetchProvider {
       const env: Record<string, string> = {};
       if (process.env.HTTP_PROXY) env.HTTP_PROXY = process.env.HTTP_PROXY;
       if (process.env.HTTPS_PROXY) env.HTTPS_PROXY = process.env.HTTPS_PROXY;
-      
+
       const stdout = await execAsync(clawfetch, [url], {
         timeout: Math.floor(timeout / 1000),
         env: Object.keys(env).length > 0 ? env : undefined,
