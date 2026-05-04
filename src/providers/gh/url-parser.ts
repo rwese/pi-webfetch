@@ -1,10 +1,11 @@
 /**
  * GitHub URL Parser
- *
+ * 
  * Parses and validates GitHub URLs to extract owner, repo, and resource type.
  */
 
 import type { URLDetection } from "../types.js";
+import { isLikelyBinaryUrl } from "../../config/binary-types.js";
 
 /**
  * Parsed GitHub URL result
@@ -92,27 +93,10 @@ export function detectGitHubUrl(url: string): URLDetection {
 }
 
 /**
- * Check if URL is likely binary for GitHub
+ * Check if URL is likely binary for GitHub (uses shared config)
  */
 export function isLikelyBinaryGitHubUrl(url: string): boolean {
-	const binaryExtensions = [
-		".pdf",
-		".zip",
-		".png",
-		".jpg",
-		".jpeg",
-		".gif",
-		".webp",
-		".mp3",
-		".mp4",
-		".avi",
-		".mov",
-		".exe",
-		".dmg",
-	];
-
-	const urlLower = url.toLowerCase();
-	return binaryExtensions.some((ext) => urlLower.includes(ext));
+	return isLikelyBinaryUrl(url);
 }
 
 /**

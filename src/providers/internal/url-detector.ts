@@ -1,52 +1,11 @@
 /**
  * URL Detector
- *
+ * 
  * URL detection utilities for the DefaultProvider.
  */
 
 import type { URLDetection } from "../types.js";
-
-/** Common binary file extensions */
-export const BINARY_EXTENSIONS = [
-	".pdf",
-	".zip",
-	".gz",
-	".tar",
-	".rar",
-	".7z",
-	".doc",
-	".docx",
-	".xls",
-	".xlsx",
-	".ppt",
-	".pptx",
-	".png",
-	".jpg",
-	".jpeg",
-	".gif",
-	".bmp",
-	".ico",
-	".webp",
-	".svg",
-	".mp3",
-	".mp4",
-	".avi",
-	".mov",
-	".wmv",
-	".flv",
-	".webm",
-	".exe",
-	".dmg",
-	".pkg",
-	".deb",
-	".rpm",
-	".appimage",
-	".ttf",
-	".otf",
-	".woff",
-	".woff2",
-	".eot",
-];
+import { BINARY_EXTENSIONS } from "../../config/binary-types.js";
 
 /** SPA indicator domains/patterns */
 const SPA_INDICATORS = [

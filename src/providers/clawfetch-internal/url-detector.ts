@@ -1,10 +1,11 @@
 /**
  * Clawfetch URL Detector
- *
+ * 
  * URL detection utilities for the ClawfetchProvider.
  */
 
 import type { URLDetection } from "../types.js";
+import { BINARY_EXTENSIONS } from "../../config/binary-types.js";
 
 /** SPA indicator domains/patterns */
 const SPA_INDICATORS = [
@@ -15,21 +16,6 @@ const SPA_INDICATORS = [
 	"figma.com",
 	"google.com/mail",
 	"mail.google",
-];
-
-/** Binary file extensions */
-const BINARY_EXTENSIONS = [
-	".pdf",
-	".zip",
-	".png",
-	".jpg",
-	".jpeg",
-	".gif",
-	".webp",
-	".mp3",
-	".mp4",
-	".avi",
-	".mov",
 ];
 
 /**
