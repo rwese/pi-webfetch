@@ -1,89 +1,102 @@
 # SOLID Principles Review - Implementation Status
 
-## Status: IN PROGRESS
+## Status: ✅ COMPLETED
 
-### Completed (2026-05-04)
+### Summary
 
-#### HIGH Priority
-
-- [x] **DRY: Extract duplicated `execAsync()` to shared utility**
-  - Created `src/utils/process.ts` with `execAsync()`, `execAsyncFull()`, `ProcessMutex`, `ExecAsyncError`
-  - Updated 3 providers: DefaultProvider, ClawfetchProvider, GhCliProvider
-  - Commit: 8740e01
-
-- [x] **SRP: Split `extensions/index.ts` (710 lines → 68 lines)**
-  - Created `extensions/tools/` with 5 tool files:
-    - `webfetch.ts`, `webfetch-spa.ts`, `download-file.ts`
-    - `webfetch-providers.ts`, `webfetch-cache.ts`
-  - Created `extensions/commands/` with 3 command files:
-    - `webfetch-command.ts`, `webfetch-status-command.ts`, `webfetch-info-command.ts`
-  - Commit: 8740e01
-
-- [x] **LSP: Unify `isAvailable()` return type**
-  - All providers return `Promise<boolean>`
-  - No interface changes needed (already correct)
+All HIGH and MEDIUM priority SOLID improvements have been implemented.
+LOW priority tasks are optional enhancements.
 
 ---
 
-## Remaining Tasks
+## Completed Tasks
 
 ### HIGH Priority
 
-#### 4. Split `extensions/helpers.ts` (SRP)
-- [ ] Create `extensions/utils/formatting.ts`
-  - `formatBytes()`, `truncateToSize()`, `getTempFilePath()`
-- [ ] Create `extensions/utils/url.ts`
-  - URL detection and parsing utilities
-- [ ] Create `extensions/fetch-phases.ts`
-  - FetchPhase type and labels
-- [ ] Update imports in dependent files
+#### ✅ Task 2: DRY - Extract duplicated `execAsync()` to shared utility
+- Created `src/utils/process.ts` with:
+  - `execAsync()`, `execAsyncFull()` - command execution
+  - `ProcessMutex` - concurrency control
+  - `ExecAsyncError` - structured errors
+- Updated 3 providers: DefaultProvider, ClawfetchProvider, GhCliProvider
+- Commit: 8740e01
 
-#### 5. Split `extensions/fetch.ts` (SRP)
-- [ ] Create `extensions/services/fetch-service.ts` - main orchestration
-- [ ] Create `extensions/services/static-fetch.ts` - fallback HTTP fetch
-- [ ] Create `extensions/services/cache-service.ts` - caching logic
-- [ ] Create `extensions/services/provider-manager.ts` - session-scoped manager
-- [ ] Update imports and exports in `extensions/index.ts`
+#### ✅ Task 1: SRP - Split `extensions/index.ts` (710 lines → 68 lines)
+- Created `extensions/tools/` with 5 tool files:
+  - `webfetch.ts`, `webfetch-spa.ts`, `download-file.ts`
+  - `webfetch-providers.ts`, `webfetch-cache.ts`
+- Created `extensions/commands/` with 3 command files:
+  - `webfetch-command.ts`, `webfetch-status-command.ts`, `webfetch-info-command.ts`
+- Commit: 8740e01
+
+#### ✅ Task 3: LSP - Unify `isAvailable()` return type
+- All providers return `Promise<boolean>`
+- No interface changes needed (already correct)
+
+#### ✅ Task 4: SRP - Split `extensions/helpers.ts`
+- Created `extensions/fetch-phases.ts` (FetchPhase type, labels)
+- Created `extensions/utils/formatting.ts` (formatBytes, truncateToSize, getTempFilePath)
+- Created `extensions/utils/url.ts` (isLikelyBinaryUrl, convertGitHubToRaw, parseUrlForDisplay)
+- Commit: 980e128
+
+#### ✅ Task 5: SRP - Split `extensions/fetch.ts` (500+ lines → 52 lines)
+- Created `extensions/services/` with 6 modules:
+  - `session-manager.ts`: Session-scoped provider management
+  - `cache-service.ts`: Caching logic
+  - `static-fetch.ts`: Static HTTP fetch without browser
+  - `fetch-service.ts`: Main fetch orchestration
+  - `research-service.ts`: Pi agent spawning for research queries
+  - `header-builder.ts`: Result header generation
+- Commit: 6eb6847
+
+---
 
 ### MEDIUM Priority
 
-#### 6. Split `src/providers/default.ts` (SRP)
-- [x] Create `BrowserManager` class - browser lifecycle
-- [x] Extract `TurndownService` configuration
-- [x] Create URL detection utilities
-- [x] Refactor `DefaultProvider` to use composed dependencies
+#### ✅ Task 6: SRP - Split `src/providers/default.ts` (456 lines → 174 lines)
+- Created `src/providers/internal/` with 3 modules:
+  - `browser-manager.ts`: Browser lifecycle, mutex, extraction logic
+  - `turndown-config.ts`: TurndownService factory, HTML utilities
+  - `url-detector.ts`: URL detection utilities
+- Commit: c8f9508
 
-#### 7. Split `src/providers/gh-cli.ts` (SRP)
-- [x] Create `GitHubUrlParser` - URL parsing logic
-- [x] Create `GitHubContentFetcher` - content fetching
-- [x] Create `FileTypeDetector` - binary/text detection
-- [x] Refactor `GhCliProvider` to use composed dependencies
+#### ✅ Task 7: SRP - Split `src/providers/gh-cli.ts` (771 lines → 105 lines)
+- Created `src/providers/gh/` with 3 modules:
+  - `url-parser.ts`: GitHub URL parsing and detection
+  - `file-type-detector.ts`: File type detection and utilities
+  - `content-fetcher.ts`: Content fetching (issue, PR, repo, file, directory)
+- Commit: ed2211d
 
-#### 8. Split `src/providers/clawfetch.ts` (SRP)
-- [ ] Extract `parseOutput()` logic
-- [ ] Extract URL detection patterns
-- [ ] Create dedicated detector classes
+#### ✅ Task 8: SRP - Split `src/providers/clawfetch.ts` (349 lines → 157 lines)
+- Created `src/providers/clawfetch-internal/` with 3 modules:
+  - `url-detector.ts`: URL detection utilities
+  - `output-parser.ts`: Output parsing logic
+  - `mutex.ts`: Async mutex for concurrency control
+- Commit: e4e0645
+
+---
 
 ### LOW Priority
 
-#### 9. Make `ProviderCapabilities` optional per-provider (ISP)
-- [ ] Review if partial capabilities make sense
-- [ ] Consider using `Partial<ProviderCapabilities>` or capability groups
+#### ✅ Task 11: DIP - Dependency injection for `ProviderManager`
+- Added `ProviderFactory` interface for creating providers
+- Constructor accepts factory and pre-registered providers
+- Allows test doubles and mocks for testing
+- Export `defaultProviderFactory` for standard configuration
+- Commit: f5b0f85
 
-#### 10. Add `FetchMethod` strategy pattern (OCP)
-- [ ] Create `FetchMethod` interface
-- [ ] Implement strategy classes for different fetch approaches
-- [ ] Allow adding new fetch methods without modifying existing code
+#### ⏭️ Task 9: ISP - Make `ProviderCapabilities` optional per-provider
+- Review if partial capabilities make sense
+- Consider using `Partial<ProviderCapabilities>` or capability groups
 
-#### 11. Dependency injection for `ProviderManager` (DIP)
-- [ ] Accept providers via constructor injection
-- [ ] Allow test doubles / mocks for testing
-- [ ] Decouple from concrete provider implementations
+#### ⏭️ Task 10: OCP - Add `FetchMethod` strategy pattern
+- Create `FetchMethod` interface
+- Implement strategy classes for different fetch approaches
 
-#### 12. Extract binary type detection to configuration (OCP)
-- [ ] Create `src/config/binary-types.ts`
-- [ ] Create `src/config/content-types.ts`
-- [ ] Share configuration across providers
+#### ⏭️ Task 12: OCP - Extract binary type detection to configuration
+- Create `src/config/binary-types.ts`
+- Create `src/config/content-types.ts`
+- Share configuration across providers
 
 ---
 
@@ -95,6 +108,27 @@
 - [x] Extension validation passes
 - [x] No TODO comments left in refactored code
 - [ ] Performance regression testing
+
+---
+
+## Files Created (Total: 28)
+
+```
+extensions/
+├── tools/              (5 files)
+├── commands/           (3 files)
+├── utils/             (2 files)
+├── services/          (6 files)
+├── fetch-phases.ts
+└── helpers.ts          (re-export)
+
+src/
+├── utils/process.ts
+└── providers/
+    ├── internal/       (3 files)
+    ├── gh/            (3 files)
+    └── clawfetch-internal/ (3 files)
+```
 
 ---
 
