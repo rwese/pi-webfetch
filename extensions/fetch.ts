@@ -16,8 +16,22 @@ export type { FetchPhase } from './helpers.js';
 import { isBinaryContentType, getExtensionFromContentType } from './content-types.js';
 import { extractMainContent, convertToMarkdown } from './html.js';
 import { removeMarkdownAnchors, extractEmbeddedImages } from './markdown.js';
+import { getCache, setCache, formatAge } from './cache.js';
 
 const MAX_MARKDOWN_SIZE = 100 * 1024;
+
+/**
+ * Check if we should skip caching for a URL
+ * Currently skips raw GitHub URLs as they are typically versioned content
+ */
+function shouldSkipCache(url: string): boolean {
+	try {
+		const parsed = new URL(url);
+		return parsed.hostname.toLowerCase() === 'raw.githubusercontent.com';
+	} catch {
+		return false;
+	}
+}
 
 /**
  * Session-scoped provider managers
@@ -85,15 +99,64 @@ function buildFetchHeader(details: WebfetchDetails): string {
 // Main fetch functions
 // ============================================================================
 
+/** Helper to cache a successful fetch result */
+async function cacheFetchResult(result: FetchResult): Promise<FetchResult> {
+	const url = result.details.url;
+	if (shouldSkipCache(url)) return result;
+	
+	const textContent = result.content[0]?.text;
+	if (!textContent) return result;
+	
+	try {
+		await setCache(url, {
+			url,
+			content: textContent,
+			contentType: result.details.contentType,
+			status: result.details.status,
+			provider: result.details.provider,
+			extractionMethod: result.details.extractionMethod,
+			cachedAt: Date.now(),
+		});
+	} catch {
+		// Cache write failure is non-fatal
+	}
+	
+	return result;
+}
+
 /** Main webfetch function - auto-detects best fetch method */
 export async function fetchUrl(
 	url: string,
 	fetchFn: typeof fetch = fetch,
 	provider?: string,
 ): Promise<FetchResult> {
+	// Check cache first (unless we should skip caching)
+	if (!shouldSkipCache(url)) {
+		const cached = await getCache(url);
+		if (cached) {
+			const cacheAge = Date.now() - cached.cachedAt;
+			const details: WebfetchDetails = {
+				url,
+				contentType: cached.contentType,
+				status: cached.status,
+				processedAs: 'fallback',
+				provider: cached.provider,
+				extractionMethod: cached.extractionMethod,
+				cached: true,
+				cacheAge,
+			};
+			// Append cache footer to content
+			const cacheFooter = `\n\n---\n\n> 💾 *Cached result from ${formatAge(cacheAge)}*`;
+			return {
+				content: [{ type: 'text' as const, text: cached.content + cacheFooter }],
+				details,
+			};
+		}
+	}
+
 	// Check if URL is likely binary
 	if (isLikelyBinaryUrl(url)) {
-		return handleBinary(url, fetchFn);
+		return cacheFetchResult(await handleBinary(url, fetchFn));
 	}
 
 	// Check for provider-based fetch (default for HTML content)
@@ -139,10 +202,11 @@ export async function fetchUrl(
 					extractionMethod: result.extractionMethod,
 				};
 
-				return {
-					content: [{ type: 'text', text: buildFetchHeader(details) + content }],
+				const fetchResult: FetchResult = {
+					content: [{ type: 'text' as const, text: buildFetchHeader(details) + content }],
 					details,
 				};
+				return cacheFetchResult(fetchResult);
 			}
 		} catch {
 			// Provider failed, fall back to static fetch
@@ -150,7 +214,7 @@ export async function fetchUrl(
 	}
 
 	// Fallback to static fetch
-	return staticFetch(url, fetchFn);
+	return cacheFetchResult(await staticFetch(url, fetchFn));
 }
 
 /** Static HTML fetch with content extraction */
@@ -321,6 +385,30 @@ export async function webfetchSPA(
 	waitFor: string = 'networkidle',
 	timeout: number = 30000,
 ): Promise<FetchResult> {
+	// Check cache first
+	if (!shouldSkipCache(url)) {
+		const cached = await getCache(url);
+		if (cached) {
+			const cacheAge = Date.now() - cached.cachedAt;
+			const details: WebfetchDetails = {
+				url,
+				contentType: cached.contentType,
+				status: cached.status,
+				processedAs: 'spa',
+				provider: cached.provider,
+				extractionMethod: cached.extractionMethod,
+				cached: true,
+				cacheAge,
+			};
+			// Append cache footer to content
+			const cacheFooter = `\n\n---\n\n> 💾 *Cached result from ${formatAge(cacheAge)}*`;
+			return {
+				content: [{ type: 'text' as const, text: cached.content + cacheFooter }],
+				details,
+			};
+		}
+	}
+
 	const manager = await getProviderManager();
 	const config: ProviderConfig = {
 		timeout,
@@ -356,10 +444,11 @@ export async function webfetchSPA(
 			extractionMethod: providerResult.extractionMethod,
 		};
 
-		return {
-			content: [{ type: 'text', text: buildFetchHeader(details) + finalText }],
+		const fetchResult: FetchResult = {
+			content: [{ type: 'text' as const, text: buildFetchHeader(details) + finalText }],
 			details,
 		};
+		return cacheFetchResult(fetchResult);
 	}
 
 	// Fallback

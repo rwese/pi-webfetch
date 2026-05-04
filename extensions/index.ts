@@ -59,6 +59,10 @@ import {
 	getCommandPhaseLabel,
 } from './helpers.js';
 
+// Cache utilities
+import { clearCache, clearAllCache, getCacheStats, formatAge } from './cache.js';
+export { getCache, clearCache, clearAllCache, getCacheStats, formatAge } from './cache.js';
+
 // Constants
 export const MAX_MARKDOWN_SIZE = 100 * 1024;
 
@@ -165,6 +169,9 @@ export default function (pi: ExtensionAPI): void {
 				content += theme.fg('muted', parseUrlForDisplay(url));
 				if (details?.provider) {
 					content += ' ' + theme.fg('muted', `[${details.provider}]`);
+				}
+				if (details?.cached && details?.cacheAge !== undefined) {
+					content += ' ' + theme.fg('muted', `[cached ${formatAge(details.cacheAge)}]`);
 				}
 
 				if (textValue) {
@@ -289,6 +296,9 @@ export default function (pi: ExtensionAPI): void {
 				if (details?.provider) {
 					content += ' ' + theme.fg('muted', `[${details.provider}]`);
 				}
+				if (details?.cached && details?.cacheAge !== undefined) {
+					content += ' ' + theme.fg('muted', `[cached ${formatAge(details.cacheAge)}]`);
+				}
 
 				if (textValue) {
 					content += '\n\n' + theme.fg('toolOutput', textValue);
@@ -375,6 +385,71 @@ export default function (pi: ExtensionAPI): void {
 			return {
 				content: [{ type: 'text', text: lines.join('\n') }],
 				details: { providers },
+			};
+		},
+	});
+
+	pi.registerTool({
+		name: 'webfetch-clear-cache',
+		label: 'Clear Web Fetch Cache',
+		description: 'Clear cached content for a specific URL, or all cached content',
+		parameters: Type.Object({
+			url: Type.Optional(
+				Type.String({ description: 'Specific URL to clear from cache. If omitted, clears all cache.' }),
+			),
+		}),
+		async execute(_toolCallId, params, _signal) {
+			interface ClearCacheDetails {
+				url?: string;
+				cleared?: boolean;
+				clearedCount?: number;
+			}
+
+			let result: { content: Array<{ type: 'text'; text: string }>; details: ClearCacheDetails };
+
+			if (params.url) {
+				// Clear specific URL
+				const cleared = await clearCache(params.url);
+				result = {
+					content: [{ type: 'text' as const, text: cleared ? `✅ Cache cleared for: ${params.url}` : `ℹ️ No cache entry found for: ${params.url}` }],
+					details: { url: params.url, cleared },
+				};
+			} else {
+				// Clear all
+				const count = await clearAllCache();
+				result = {
+					content: [{ type: 'text' as const, text: `✅ Cleared ${count} cached item(s)` }],
+					details: { clearedCount: count },
+				};
+			}
+			return result;
+		},
+	});
+
+	pi.registerTool({
+		name: 'webfetch-cache-stats',
+		label: 'Web Fetch Cache Stats',
+		description: 'Get statistics about cached webfetch content',
+		parameters: Type.Object({}),
+		async execute(_toolCallId, _params, _signal) {
+			const stats = await getCacheStats();
+			const sizeMB = (stats.totalSize / (1024 * 1024)).toFixed(2);
+
+			const lines = [
+				'## Cache Statistics',
+				'',
+				`| Cached items | ${stats.count} |`,
+				`| Total size | ${sizeMB} MB |`,
+				'',
+				'### Commands',
+				'',
+				'- `webfetch-clear-cache` - Clear all cached content',
+				'- `webfetch-clear-cache --url "<url>"` - Clear cache for specific URL',
+			];
+
+			return {
+				content: [{ type: 'text', text: lines.join('\n') }],
+				details: stats,
 			};
 		},
 	});

@@ -16,6 +16,10 @@ export interface WebfetchDetails {
 	extractionMethod?: string;
 	/** Current phase for streaming status display */
 	phase?: FetchPhase;
+	/** Whether this result was served from cache */
+	cached?: boolean;
+	/** Age of cached content in milliseconds */
+	cacheAge?: number;
 }
 
 export interface FetchResult {
