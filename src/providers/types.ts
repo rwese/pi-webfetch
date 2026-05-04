@@ -43,18 +43,21 @@ export interface ProviderFetchResult {
 
 /**
  * Capabilities of a provider
+ * 
+ * All fields are optional to support the Interface Segregation Principle,
+ * allowing providers to only declare the capabilities they support.
  */
 export interface ProviderCapabilities {
   /** Supports JavaScript-heavy SPAs */
-  supportsSPA: boolean;
+  supportsSPA?: boolean;
   /** Supports GitHub-specific fast paths */
-  supportsGitHubFastPath: boolean;
+  supportsGitHubFastPath?: boolean;
   /** Supports Reddit RSS fast path */
-  supportsRedditRSS: boolean;
+  supportsRedditRSS?: boolean;
   /** Supports Cloudflare/bot protection bypass */
-  supportsBotProtection: boolean;
+  supportsBotProtection?: boolean;
   /** Returns rich metadata */
-  returnsMetadata: boolean;
+  returnsMetadata?: boolean;
 }
 
 /**
