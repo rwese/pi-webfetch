@@ -1,80 +1,79 @@
 {
-	"name": "@rwese/pi-webfetch",
-	"version": "0.2.1",
-	"description": "Webfetch extension for pi coding agent",
-	"keywords": [
-		"pi-package",
-		"web",
-		"fetch"
-	],
-	"repository": {
-		"type": "git",
-		"url": "https://github.com/rwese/pi-webfetch"
-	},
-	"files": [
-		"extensions",
-		"README.md",
-		"LICENSE"
-	],
-	"publishConfig": {
-		"registry": "https://registry.npmjs.org"
-	},
-	"private": false,
-	"type": "module",
-	"pi": {
-		"extensions": [
-			"./extensions"
-		]
-	},
-	"scripts": {
-		"clean": "rm -rf dist coverage",
-		"typecheck": "tsc --noEmit",
-		"test": "vitest run",
-		"test:coverage": "vitest run --coverage",
-		"test:watch": "vitest",
-		"test:regression": "vitest run test/cases/run-regression.test.ts",
-		"test:regression:watch": "vitest test/cases/run-regression.test.ts",
-		"report-url": "tsx test/report-url.ts",
-		"lint": "eslint extensions/",
-		"lint:fix": "eslint extensions/ --fix",
-		"format": "prettier --write extensions/",
-		"validate": "npm run typecheck && npm run lint && npm run test",
-		"version:patch": "npm version patch -m 'chore: Bump patch version' && git push && git push --tags",
-		"version:minor": "npm version minor -m 'feat: Bump minor version' && git push && git push --tags",
-		"version:major": "npm version major -m 'BREAKING CHANGE: Major version bump' && git push && git push --tags",
-		"release:patch": "npm run validate && npm run version:patch && npm publish --access public",
-		"release:minor": "npm run validate && npm run version:minor && npm publish --access public",
-		"release:major": "npm run validate && npm run version:major && npm publish --access public",
-		"prepare": "husky"
-	},
-	"dependencies": {
-		"cheerio": "^1.0.0",
-		"turndown": "^7.2.0"
-	},
-	"lint-staged": {
-		"**/*": "prettier --write"
-	},
-	"devDependencies": {
-		"@mariozechner/pi-coding-agent": "latest",
-		"@sinclair/typebox": "latest",
-		"@types/cheerio": "^1.0.0",
-		"@types/node": "^22.0.0",
-		"@types/turndown": "^5.0.5",
-		"@typescript-eslint/eslint-plugin": "^8.0.0",
-		"@typescript-eslint/parser": "^8.0.0",
-		"@vitest/coverage-v8": "^4.1.4",
-		"eslint": "^9.0.0",
-		"eslint-plugin-n": "^17.24.0",
-		"happy-dom": "^20.8.9",
-		"husky": "^9.1.7",
-		"lint-staged": "^16.4.0",
-		"prettier": "^3.4.0",
-		"tsx": "^4.21.0",
-		"typescript": "^5.8.0",
-		"vitest": "^4.1.4"
-	},
-	"peerDependencies": {
-		"@mariozechner/pi-coding-agent": "*",
-		"@sinclair/typebox": "*"
-	}
+  "name": "@rwese/pi-webfetch",
+  "version": "0.2.1",
+  "description": "Webfetch extension for pi coding agent",
+  "keywords": [
+    "pi-package",
+    "web",
+    "fetch"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rwese/pi-webfetch"
+  },
+  "files": [
+    "extensions",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org"
+  },
+  "private": false,
+  "type": "module",
+  "pi": {
+    "extensions": [
+      "./extensions"
+    ]
+  },
+  "scripts": {
+    "clean": "rm -rf dist coverage",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:regression": "vitest run test/cases/run-regression.test.ts",
+    "test:regression:watch": "vitest test/cases/run-regression.test.ts",
+    "report-url": "tsx test/report-url.ts",
+    "lint": "eslint extensions/",
+    "lint:fix": "eslint extensions/ --fix",
+    "format": "prettier --write extensions/",
+    "validate": "npm run typecheck && npm run lint && npm run test",
+    "version:patch": "npm version patch -m 'chore: Bump patch version' && git push && git push --tags",
+    "version:minor": "npm version minor -m 'feat: Bump minor version' && git push && git push --tags",
+    "version:major": "npm version major -m 'BREAKING CHANGE: Major version bump' && git push && git push --tags",
+    "release:patch": "npm run validate && npm run version:patch && npm publish --access public",
+    "release:minor": "npm run validate && npm run version:minor && npm publish --access public",
+    "release:major": "npm run validate && npm run version:major && npm publish --access public",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "cheerio": "^1.0.0",
+    "turndown": "^7.2.0"
+  },
+  "lint-staged": {
+    "**/*": "prettier --write"
+  },
+  "devDependencies": {
+    "@mariozechner/pi-coding-agent": "latest",
+    "@sinclair/typebox": "latest",
+    "@types/cheerio": "^1.0.0",
+    "@types/node": "^22.0.0",
+    "@types/turndown": "^5.0.5",
+    "@typescript-eslint/eslint-plugin": "^8.0.0",
+    "@typescript-eslint/parser": "^8.0.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "eslint": "^9.0.0",
+    "happy-dom": "^20.8.9",
+    "husky": "^9.1.7",
+    "lint-staged": "^16.4.0",
+    "prettier": "^3.4.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.8.0",
+    "vitest": "^4.1.4"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
 }

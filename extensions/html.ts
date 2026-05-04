@@ -174,51 +174,6 @@ export function extractMainContent(html: string): { content: string; extracted: 
 	return { content: html, extracted: false };
 }
 
-/** Detect if HTML is likely a SPA (Single Page Application) */
-export function detectLikelySPA(html: string): {
-	likely: boolean;
-	indicators: string[];
-} {
-	const indicators: string[] = [];
-
-	// Check for SPA frameworks
-	if (html.includes('id="root"') || html.includes('id="app"') || html.includes('ng-app')) {
-		indicators.push('Common SPA root element');
-	}
-
-	// Check for minimal body content (SPAs often have empty-looking HTML)
-	const bodyMatch = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i);
-	if (bodyMatch) {
-		const bodyContent = bodyMatch[1]
-			.replace(/<script[\s\S]*?<\/script>/gi, '')
-			.replace(/<style[\s\S]*?<\/style>/gi, '');
-		const textLength = bodyContent.replace(/<[^>]+>/g, '').trim().length;
-		if (textLength < 500) {
-			indicators.push('Minimal body content (< 500 chars)');
-		}
-	}
-
-	// Check for SPA framework indicators
-	const spaPatterns = [
-		{ pattern: /data-react-root|data-vue-app/, name: 'React/Vue app' },
-		{ pattern: /__NEXT_DATA__/, name: 'Next.js' },
-		{ pattern: /nuxt-app/, name: 'Nuxt.js' },
-		{ pattern: /angular.*module/, name: 'Angular app' },
-		{ pattern: /v-app.*class=/, name: 'Vuetify app' },
-	];
-
-	for (const { pattern, name } of spaPatterns) {
-		if (pattern.test(html)) {
-			indicators.push(name);
-		}
-	}
-
-	return {
-		likely: indicators.length > 0,
-		indicators,
-	};
-}
-
 /**
  * Convert HTML to Markdown using turndown with cleaning
  */

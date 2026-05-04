@@ -19,17 +19,17 @@ export type {
 
 // Fetch functions
 import {
-	fetchUrl,
+	// eslint-disable-next-line @typescript-eslint/no-unused-vars
+	fetchUrl, // Public API (used in README examples)
 	webfetchSPA,
 	downloadFile,
 	getProviderStatus,
 	webfetchResearch,
 	closeAllProviders,
 } from './fetch.js';
-export { fetchUrl, webfetchSPA, downloadFile, getProviderStatus, webfetchResearch };
 
 // HTML utilities
-export { extractMainContent, detectLikelySPA, convertToMarkdown } from './html.js';
+export { extractMainContent, convertToMarkdown } from './html.js';
 
 // Markdown post-processing
 export { removeMarkdownAnchors, extractEmbeddedImages, stripEmbeddedImages } from './markdown.js';
@@ -144,11 +144,17 @@ export default function (pi: ExtensionAPI): void {
 					content += '\n' + theme.fg('toolOutput', preview);
 				}
 			} else {
-				// Show final status
+				// Show final result with actual content
 				const url = details?.url || '';
 				content += theme.fg('muted', parseUrlForDisplay(url));
 				if (details?.provider) {
 					content += ' ' + theme.fg('muted', `[${details.provider}]`);
+				}
+
+				// Include the actual fetched content in the result
+				const textContent = result.content.find(c => c.type === 'text');
+				if (textContent?.text) {
+					content += '\n\n' + theme.fg('toolOutput', textContent.text);
 				}
 			}
 
@@ -252,6 +258,13 @@ export default function (pi: ExtensionAPI): void {
 				if (details?.provider) {
 					content += ' ' + theme.fg('muted', `[${details.provider}]`);
 				}
+
+				// Include the actual fetched content in the result
+				const textContent = result.content.find(c => c.type === 'text');
+				if (textContent?.text) {
+					content += '\n\n' + theme.fg('toolOutput', textContent.text);
+				}
+
 				text.setText(content);
 			}
 

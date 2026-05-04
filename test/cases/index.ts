@@ -25,7 +25,7 @@ export function generateSlug(url: string, issue: string): string {
 /**
  * Parse a test case file (YAML + markdown)
  */
-export function parseCaseFile(content: string): TestCaseFile {
+function parseCaseFile(content: string): TestCaseFile {
 	const caseMatch = content.match(/^---\n([\s\S]*?)\n---\n/);
 	const yamlContent = caseMatch?.[1] || "";
 	const restContent = content.slice(caseMatch?.[0].length || 0);
@@ -80,7 +80,7 @@ export function parseCaseFile(content: string): TestCaseFile {
 /**
  * Serialize a test case to file format
  */
-export function serializeCaseFile(testCase: TestCase): string {
+function serializeCaseFile(testCase: TestCase): string {
 	const lines: string[] = ["---"];
 	lines.push(`id: ${testCase.id}`);
 	lines.push(`url: ${testCase.url}`);
@@ -175,13 +175,6 @@ export function getCasesByStatus(
 	status: TestCase["status"],
 ): TestCaseFile[] {
 	return loadAllCases().filter((c) => c.case.status === status);
-}
-
-/**
- * Get cases by tag
- */
-export function getCasesByTag(tag: string): TestCaseFile[] {
-	return loadAllCases().filter((c) => c.case.tags.includes(tag));
 }
 
 /**

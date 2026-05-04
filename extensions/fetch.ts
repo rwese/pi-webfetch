@@ -295,15 +295,6 @@ async function handleBinary(url: string, fetchFn: typeof fetch): Promise<FetchRe
 // Convenience functions
 // ============================================================================
 
-/** Convenience wrapper for fetchUrl */
-export async function webfetch(
-	url: string,
-	fetchFn?: typeof fetch,
-	provider?: string,
-): Promise<FetchResult> {
-	return fetchUrl(url, fetchFn, provider);
-}
-
 /** Explicit browser-based fetch for SPAs */
 export async function webfetchSPA(
 	url: string,
