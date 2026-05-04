@@ -54,10 +54,10 @@
 - [x] Refactor `DefaultProvider` to use composed dependencies
 
 #### 7. Split `src/providers/gh-cli.ts` (SRP)
-- [ ] Create `GitHubUrlParser` - URL parsing logic
-- [ ] Create `GitHubContentFetcher` - content fetching
-- [ ] Create `FileTypeDetector` - binary/text detection
-- [ ] Refactor `GhCliProvider` to use composed dependencies
+- [x] Create `GitHubUrlParser` - URL parsing logic
+- [x] Create `GitHubContentFetcher` - content fetching
+- [x] Create `FileTypeDetector` - binary/text detection
+- [x] Refactor `GhCliProvider` to use composed dependencies
 
 #### 8. Split `src/providers/clawfetch.ts` (SRP)
 - [ ] Extract `parseOutput()` logic
@@ -93,7 +93,7 @@
 - [x] ESLint passes (1 pre-existing warning)
 - [x] All tests pass (304 tests)
 - [x] Extension validation passes
-- [ ] No TODO comments left in refactored code
+- [x] No TODO comments left in refactored code
 - [ ] Performance regression testing
 
 ---
