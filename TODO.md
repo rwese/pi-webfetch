@@ -20,9 +20,9 @@
 - [x] Remove `execAsync` from `src/providers/gh-cli.ts`
 
 ### 3. Unify `isAvailable()` return type (LSP)
-- [ ] Standardize all providers to return `Promise<boolean>`
-- [ ] Update `WebfetchProvider` interface type
-- [ ] Update `ProviderManager.isProviderAvailable()` accordingly
+- [x] Standardize all providers to return `Promise<boolean>`
+- [ ] Update `WebfetchProvider` interface type (already correct)
+- [x] Update `ProviderManager.isProviderAvailable()` accordingly (already correct)
 
 ## MEDIUM Priority
 
