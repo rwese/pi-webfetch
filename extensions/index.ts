@@ -122,6 +122,9 @@ export default function (pi: ExtensionAPI): void {
 
 			const details = result.details as WebfetchDetails | undefined;
 			const phase = details?.phase || 'idle';
+			const textContent = result.content.find(c => c.type === 'text');
+			const textValue = textContent?.text || '';
+			const lines = textValue.split('\n');
 
 			// Build status display
 			const text = new Text('', 0, 0);
@@ -138,23 +141,34 @@ export default function (pi: ExtensionAPI): void {
 				}
 
 				// Show preview of output (only text content)
-				const textContent = result.content.find(c => c.type === 'text');
-				if (textContent?.text) {
-					const preview = textContent.text.split('\n').slice(0, 3).join('\n');
+				if (lines.length > 0) {
+					const preview = lines.slice(0, 3).join('\n');
 					content += '\n' + theme.fg('toolOutput', preview);
 				}
+			} else if (!options.expanded) {
+				// Collapsed view: show summary
+				const url = details?.url || '';
+				const lineCount = lines.length;
+				const preview = lines[0]?.slice(0, 60) ?? '';
+
+				content += theme.fg('muted', parseUrlForDisplay(url));
+				if (details?.provider) {
+					content += ' ' + theme.fg('muted', `[${details.provider}]`);
+				}
+				content += '\n' + theme.fg('muted', `→ ${lineCount} lines`);
+				if (preview) {
+					content += ' ' + theme.fg('muted', `"${preview}${preview.length >= 60 ? '...' : ''}"`);
+				}
 			} else {
-				// Show final result with actual content
+				// Expanded view: show full content
 				const url = details?.url || '';
 				content += theme.fg('muted', parseUrlForDisplay(url));
 				if (details?.provider) {
 					content += ' ' + theme.fg('muted', `[${details.provider}]`);
 				}
 
-				// Include the actual fetched content in the result
-				const textContent = result.content.find(c => c.type === 'text');
-				if (textContent?.text) {
-					content += '\n\n' + theme.fg('toolOutput', textContent.text);
+				if (textValue) {
+					content += '\n\n' + theme.fg('toolOutput', textValue);
 				}
 			}
 
@@ -241,30 +255,44 @@ export default function (pi: ExtensionAPI): void {
 			}
 
 			const details = result.details as WebfetchDetails | undefined;
+			const textContent = result.content.find(c => c.type === 'text');
+			const textValue = textContent?.text || '';
+			const lines = textValue.split('\n');
 			const text = new Text('', 0, 0);
+			let content = theme.fg('toolTitle', theme.bold('🌐 webfetch-spa '));
 
 			if (options.isPartial) {
-				let content = theme.fg('toolTitle', theme.bold('🌐 webfetch-spa '));
 				content += theme.fg('muted', '🌍 Loading SPA...');
 				if (state.startedAt) {
 					const elapsed = ((Date.now() - state.startedAt) / 1000).toFixed(1);
 					content += ' ' + theme.fg('muted', `(${elapsed}s)`);
 				}
 				text.setText(content);
+			} else if (!options.expanded) {
+				// Collapsed view: show summary
+				const url = details?.url || '';
+				const lineCount = lines.length;
+				const preview = lines[0]?.slice(0, 60) ?? '';
+
+				content += theme.fg('muted', parseUrlForDisplay(url));
+				if (details?.provider) {
+					content += ' ' + theme.fg('muted', `[${details.provider}]`);
+				}
+				content += '\n' + theme.fg('muted', `→ ${lineCount} lines`);
+				if (preview) {
+					content += ' ' + theme.fg('muted', `"${preview}${preview.length >= 60 ? '...' : ''}"`);
+				}
 			} else {
-				let content = theme.fg('toolTitle', theme.bold('🌐 webfetch-spa '));
+				// Expanded view: show full content
 				const url = details?.url || '';
 				content += theme.fg('muted', parseUrlForDisplay(url));
 				if (details?.provider) {
 					content += ' ' + theme.fg('muted', `[${details.provider}]`);
 				}
 
-				// Include the actual fetched content in the result
-				const textContent = result.content.find(c => c.type === 'text');
-				if (textContent?.text) {
-					content += '\n\n' + theme.fg('toolOutput', textContent.text);
+				if (textValue) {
+					content += '\n\n' + theme.fg('toolOutput', textValue);
 				}
-
 				text.setText(content);
 			}
 
