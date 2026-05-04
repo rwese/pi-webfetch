@@ -5,64 +5,16 @@
  * This is the current/default implementation that provides browser-based fetching.
  */
 
-import { spawn } from "node:child_process";
 import { load } from "cheerio";
 import TurndownService from "turndown";
-
-/**
- * Execute a command asynchronously using spawn
- */
-function execAsync(
-	command: string,
-	args: string[],
-	options: { timeout?: number; encoding?: string } = {}
-): Promise<string> {
-	return new Promise((resolve, reject) => {
-		const proc = spawn(command, args, {
-			stdio: ['pipe', 'pipe', 'pipe'],
-		});
-
-		let stdout = '';
-		let stderr = '';
-
-		proc.stdout?.on('data', (data: Buffer) => {
-			stdout += data.toString();
-		});
-
-		proc.stderr?.on('data', (data: Buffer) => {
-			stderr += data.toString();
-		});
-
-		if (options.timeout) {
-			const timer = setTimeout(() => {
-				proc.kill('SIGTERM');
-				reject(new Error(`Command timed out after ${options.timeout}ms`));
-			}, options.timeout);
-
-			proc.on('close', () => clearTimeout(timer));
-		}
-
-		proc.on('close', (code) => {
-			if (code === 0) {
-				resolve(stdout);
-			} else {
-				reject(new Error(stderr || `Command exited with code ${code}`));
-			}
-		});
-
-		proc.on('error', (err) => {
-			reject(err);
-		});
-	});
-}
+import { execAsync } from "../utils/process.js";
 import {
-  type WebfetchProvider,
-  type ProviderFetchResult,
-  type ProviderCapabilities,
-  type URLDetection,
-  type ProviderConfig,
-  type ProviderError,
-  ProviderError as ProviderErrorClass,
+	type WebfetchProvider,
+	type ProviderFetchResult,
+	type ProviderCapabilities,
+	type URLDetection,
+	type ProviderConfig,
+	ProviderError,
 } from "./types";
 
 /** Common binary file extensions */
@@ -191,7 +143,7 @@ export class DefaultProvider implements WebfetchProvider {
 
     // Check availability
     if (!(await this.isAvailable())) {
-      throw new ProviderErrorClass(
+      throw new ProviderError(
         "agent-browser not installed. Install with: npm i -g agent-browser && agent-browser install",
         this.name
       );
@@ -205,7 +157,7 @@ export class DefaultProvider implements WebfetchProvider {
       const htmlResult = await this.extractHtmlFromBrowser(url, waitFor, timeout);
 
       if (!htmlResult.html) {
-        throw new ProviderErrorClass("Failed to extract HTML from browser", this.name);
+        throw new ProviderError("Failed to extract HTML from browser", this.name);
       }
 
       // Clean HTML and check text ratio
@@ -249,10 +201,10 @@ export class DefaultProvider implements WebfetchProvider {
         fallbackSelector: htmlResult.contentSource === "body" ? "body" : undefined,
       };
     } catch (error) {
-      if (error instanceof ProviderErrorClass) {
+      if (error instanceof ProviderError) {
         throw error;
       }
-      throw new ProviderErrorClass(
+      throw new ProviderError(
         error instanceof Error ? error.message : String(error),
         this.name,
         error instanceof Error ? error : undefined

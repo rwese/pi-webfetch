@@ -49,8 +49,8 @@ describe("DefaultProvider", () => {
     });
   });
 
-  it("checks availability", () => {
-    const result = provider.isAvailable();
+  it("checks availability", async () => {
+    const result = await provider.isAvailable();
     expect(typeof result).toBe("boolean");
   });
 });
@@ -96,8 +96,8 @@ describe("ClawfetchProvider", () => {
     });
   });
 
-  it("checks availability", () => {
-    const result = provider.isAvailable();
+  it("checks availability", async () => {
+    const result = await provider.isAvailable();
     expect(typeof result).toBe("boolean");
   });
 });

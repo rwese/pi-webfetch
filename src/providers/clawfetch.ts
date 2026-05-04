@@ -6,64 +6,15 @@
  * Plus fast paths for GitHub, Reddit RSS, and FlareSolverr support.
  */
 
-import { spawn } from "node:child_process";
+import { execAsync } from "../utils/process.js";
 import {
   type WebfetchProvider,
   type ProviderFetchResult,
   type ProviderCapabilities,
   type URLDetection,
   type ProviderConfig,
-  type ProviderError,
-  ProviderError as ProviderErrorClass,
+  ProviderError,
 } from "./types";
-
-/**
- * Execute a command asynchronously using spawn
- */
-function execAsync(
-  command: string,
-  args: string[],
-  options: { timeout?: number; env?: Record<string, string> } = {}
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, ...options.env },
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout?.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr?.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    if (options.timeout) {
-      const timer = setTimeout(() => {
-        proc.kill('SIGTERM');
-        reject(new Error(`Command timed out after ${options.timeout}ms`));
-      }, options.timeout);
-
-      proc.on('close', () => clearTimeout(timer));
-    }
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(stderr || `Command exited with code ${code}`));
-      }
-    });
-
-    proc.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
 
 /**
  * Parse clawfetch output into structured result
@@ -189,7 +140,7 @@ export class ClawfetchProvider implements WebfetchProvider {
     const clawfetch = await this.findClawfetchAsync();
 
     if (!clawfetch) {
-      throw new ProviderErrorClass(
+      throw new ProviderError(
         "clawfetch not installed. Install with: npm install -g clawfetch",
         this.name
       );
@@ -204,10 +155,10 @@ export class ClawfetchProvider implements WebfetchProvider {
       const output = await this.execClawfetchAsync(clawfetch, url, timeout);
       return this.parseOutput(output, url);
     } catch (error) {
-      if (error instanceof ProviderErrorClass) {
+      if (error instanceof ProviderError) {
         throw error;
       }
-      throw new ProviderErrorClass(
+      throw new ProviderError(
         error instanceof Error ? error.message : String(error),
         this.name,
         error instanceof Error ? error : undefined
@@ -233,7 +184,7 @@ export class ClawfetchProvider implements WebfetchProvider {
       return stdout;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      throw new ProviderErrorClass(`clawfetch execution failed: ${message}`, this.name);
+      throw new ProviderError(`clawfetch execution failed: ${message}`, this.name);
     }
   }
   

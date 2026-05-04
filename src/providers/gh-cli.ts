@@ -5,54 +5,7 @@
  * Falls back when no browser provider is available or as an alternative.
  */
 
-import { spawn } from "node:child_process";
-
-/**
- * Execute a command asynchronously using spawn
- */
-function execAsync(
-  command: string,
-  args: string[],
-  options: { timeout?: number } = {}
-): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const proc = spawn(command, args, {
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
-
-    let stdout = '';
-    let stderr = '';
-
-    proc.stdout?.on('data', (data: Buffer) => {
-      stdout += data.toString();
-    });
-
-    proc.stderr?.on('data', (data: Buffer) => {
-      stderr += data.toString();
-    });
-
-    if (options.timeout) {
-      const timer = setTimeout(() => {
-        proc.kill('SIGTERM');
-        reject(new Error(`Command timed out after ${options.timeout}ms`));
-      }, options.timeout);
-
-      proc.on('close', () => clearTimeout(timer));
-    }
-
-    proc.on('close', (code) => {
-      if (code === 0) {
-        resolve(stdout);
-      } else {
-        reject(new Error(stderr || `Command exited with code ${code}`));
-      }
-    });
-
-    proc.on('error', (err) => {
-      reject(err);
-    });
-  });
-}
+import { execAsync } from "../utils/process.js";
 import {
   type WebfetchProvider,
   type ProviderFetchResult,
@@ -574,48 +527,18 @@ export class GhCliProvider implements WebfetchProvider {
   }
 
   /**
-   * Fetch raw file content
+   * Fetch raw file content using curl via execAsync
    */
-  private fetchRawContent(downloadUrl: string | null, timeout: number): Promise<string | null> {
+  private async fetchRawContent(downloadUrl: string | null, timeout: number): Promise<string | null> {
     if (!downloadUrl) {
-      return Promise.resolve(null);
+      return null;
     }
 
-    return new Promise((resolve) => {
-      const proc = spawn("curl", ["-sL", downloadUrl], {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout?.on("data", (data) => {
-        stdout += data.toString();
-      });
-
-      proc.stderr?.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      const timer = setTimeout(() => {
-        proc.kill("SIGTERM");
-        resolve(null);
-      }, timeout);
-
-      proc.on("close", (code) => {
-        clearTimeout(timer);
-        if (code === 0) {
-          resolve(stdout);
-        } else {
-          resolve(null);
-        }
-      });
-
-      proc.on("error", () => {
-        clearTimeout(timer);
-        resolve(null);
-      });
-    });
+    try {
+      return await execAsync("curl", ["-sL", downloadUrl], { timeout });
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -713,46 +636,20 @@ export class GhCliProvider implements WebfetchProvider {
   }
 
   /**
-   * Execute gh CLI using spawn (more reliable than execFileSync in some environments)
+   * Execute gh CLI using the shared execAsync utility
    */
   private async execGh(gh: string, args: string[], timeout: number): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const proc = spawn(gh, args, {
-        stdio: ["pipe", "pipe", "pipe"],
-      });
-
-      let stdout = "";
-      let stderr = "";
-
-      proc.stdout?.on("data", (data) => {
-        stdout += data.toString();
-      });
-
-      proc.stderr?.on("data", (data) => {
-        stderr += data.toString();
-      });
-
-      const timer = setTimeout(() => {
-        proc.kill("SIGTERM");
-        reject(new ProviderError(`gh execution timed out after ${timeout}ms`, this.name));
-      }, timeout);
-
-      proc.on("close", (code) => {
-        clearTimeout(timer);
-        if (code === 0) {
-          resolve(stdout);
-        } else {
-          reject(new ProviderError(`gh execution failed with code ${code}: ${stderr || stdout}`, this.name));
-        }
-      });
-
-      proc.on("error", (err) => {
-        clearTimeout(timer);
-        reject(new ProviderError(`gh execution error: ${err.message}`, this.name));
-      });
-    }).catch((error) => {
-      throw error instanceof ProviderError ? error : new ProviderError(error instanceof Error ? error.message : String(error), this.name);
-    });
+    try {
+      return await execAsync(gh, args, { timeout });
+    } catch (error) {
+      if (error instanceof ProviderError) {
+        throw error;
+      }
+      throw new ProviderError(
+        error instanceof Error ? error.message : String(error),
+        this.name
+      );
+    }
   }
 
   /**

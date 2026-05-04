@@ -144,8 +144,8 @@ describe("GhCliProvider", () => {
 	describe("isAvailable", () => {
 		const provider = new GhCliProvider();
 
-		it("returns a boolean", () => {
-			const result = provider.isAvailable();
+		it("returns a boolean", async () => {
+			const result = await provider.isAvailable();
 			expect(typeof result).toBe("boolean");
 		});
 	});

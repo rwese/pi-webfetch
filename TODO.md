@@ -1,45 +1,78 @@
-## Goal
+# SOLID Principles Implementation - TODO
 
-Improve webfetch extension output for better user experience: progress indicators, cleaner rendering, and more polished UI.
+## HIGH Priority
 
-## Done
+### 1. Split `extensions/index.ts` (SRP)
+- [x] Create `extensions/tools/` directory
+- [x] Create `extensions/tools/webfetch.ts` - webfetch tool registration
+- [x] Create `extensions/tools/webfetch-spa.ts` - webfetch-spa tool
+- [x] Create `extensions/tools/download-file.ts` - download tool
+- [x] Create `extensions/tools/webfetch-providers.ts` - provider status tool
+- [x] Create `extensions/tools/webfetch-cache.ts` - cache tools
+- [x] Create `extensions/commands/` directory
+- [x] Update `extensions/index.ts` to re-export and compose
 
-- [x] **Progress indicators** - Globe animation + status during fetch
-- [x] **Quote parsing fix** - Queries with quotes display correctly
-- [x] **Full-width separators** - Matches pi's notification style
-- [x] **Simple rendering** - Plain text, no fancy boxes
-- [x] **Updated deps** - `pi-coding-agent@0.70.6`
+### 2. Extract duplicated `execAsync` to shared utility (DRY + DIP)
+- [x] Create `src/utils/process.ts`
+- [x] Implement shared `execAsync()` with proper typing
+- [x] Remove `execAsync` from `src/providers/default.ts`
+- [x] Remove `execAsync` from `src/providers/clawfetch.ts`
+- [x] Remove `execAsync` from `src/providers/gh-cli.ts`
 
-## Output Format
+### 3. Unify `isAvailable()` return type (LSP)
+- [ ] Standardize all providers to return `Promise<boolean>`
+- [ ] Update `WebfetchProvider` interface type
+- [ ] Update `ProviderManager.isProviderAvailable()` accordingly
 
-Both simple fetch and research results now use full-width dash separators:
+## MEDIUM Priority
 
-```
-────────────────────────────────────────────────────────────────────────────────
-🌐 Fetch Result: https://example.com
-Provider: default
-...content...
-────────────────────────────────────────────────────────────────────────────────
+### 4. Split `extensions/helpers.ts` (SRP)
+- [ ] Create `extensions/utils/formatting.ts` - formatBytes, truncateToSize, getTempFilePath
+- [ ] Create `extensions/utils/url.ts` - URL utilities
+- [ ] Create `extensions/fetch-phases.ts` - FetchPhase type, labels
+- [ ] Update imports in dependent files
 
-────────────────────────────────────────────────────────────────────────────────
-🔍 Research Result
-/webfetch url "query"
-...analysis...
-────────────────────────────────────────────────────────────────────────────────
-```
+### 5. Split `extensions/fetch.ts` (SRP)
+- [ ] Create `extensions/services/fetch-service.ts` - main orchestration
+- [ ] Create `extensions/services/static-fetch.ts` - static HTTP fetch
+- [ ] Create `extensions/services/cache-service.ts` - caching logic
+- [ ] Create `extensions/services/provider-manager.ts` - session-scoped manager
+- [ ] Update imports and exports in `extensions/index.ts`
 
-## Changes
+### 6. Split `src/providers/default.ts` (SRP)
+- [ ] Create `BrowserManager` class
+- [ ] Extract `TurndownService` configuration
+- [ ] Create URL detection utilities
+- [ ] Refactor `DefaultProvider` to use composed dependencies
 
-- `extensions/index.ts` - Working indicator, quote stripping
-- `extensions/message-renderers.ts` - FullWidthSeparator component, simple text rendering
+### 7. Split `src/providers/gh-cli.ts` (SRP)
+- [ ] Create `GitHubUrlParser`
+- [ ] Create `GitHubContentFetcher`
+- [ ] Create `FileTypeDetector`
+- [ ] Refactor `GhCliProvider`
 
-## Testing
+## LOW Priority
 
-```bash
-tmux new-session -d -s webfetch-test -n pi
-tmux send-keys -t webfetch-test:pi 'pi -ne -e . 2>&1' Enter
-tmux send-keys -t webfetch-test:pi '/webfetch https://example.com' Enter
-tmux send-keys -t webfetch-test:pi '/webfetch https://nope.at "list 3 things"' Enter
-tmux capture-pane -t webfetch-test:pi -p -S -30
-tmux kill-session -t webfetch-test
-```
+### 8. Make `ProviderCapabilities` optional per-provider (ISP)
+- [ ] Consider using `Partial<ProviderCapabilities>` or
+- [ ] Create capability groups
+
+### 9. Add `FetchMethod` strategy pattern (OCP)
+- [ ] Create `FetchMethod` interface
+- [ ] Implement strategy classes
+
+### 10. Dependency injection for `ProviderManager` (DIP)
+- [ ] Accept providers via constructor injection
+- [ ] Allow test doubles / mocks
+
+### 11. Extract binary type detection to configuration (OCP)
+- [ ] Create `src/config/binary-types.ts`
+- [ ] Create `src/config/content-types.ts`
+- [ ] Share across providers
+
+## Verification
+
+- [ ] All tests pass: `npm test`
+- [ ] Linter passes: `npm run lint`
+- [ ] Type check passes: `npm run typecheck`
+- [ ] Extension loads correctly: `pi -e . --offline -p test`
