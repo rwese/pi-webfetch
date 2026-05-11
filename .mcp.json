@@ -1,0 +1,8 @@
+{
+	"mcpServers": {
+		"pi-webfetch": {
+			"command": "npx",
+			"args": ["-y", "@rwese/pi-webfetch", "mcp"]
+		}
+	}
+}

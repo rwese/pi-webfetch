@@ -6,7 +6,7 @@
  * Plus fast paths for GitHub, Reddit RSS, and FlareSolverr support.
  */
 
-import { execAsync } from "../utils/process.js";
+import { execAsync } from '../utils/process.js';
 import {
 	type WebfetchProvider,
 	type ProviderFetchResult,
@@ -14,18 +14,14 @@ import {
 	type URLDetection,
 	type ProviderConfig,
 	ProviderError,
-} from "./types";
-import {
-	detectUrl,
-	parseOutput,
-	ClawfetchMutex,
-} from "./clawfetch-internal";
+} from './types.js';
+import { detectUrl, parseOutput, ClawfetchMutex } from './clawfetch-internal/index.js';
 
 /**
  * Clawfetch provider using the clawfetch CLI
  */
 export class ClawfetchProvider implements WebfetchProvider {
-	readonly name = "clawfetch";
+	readonly name = 'clawfetch';
 	readonly priority = 5; // Lower than default (tried second)
 
 	readonly capabilities: ProviderCapabilities = {
@@ -50,15 +46,15 @@ export class ClawfetchProvider implements WebfetchProvider {
 
 		// Check common locations
 		const candidates = [
-			"clawfetch", // In PATH
-			"./node_modules/.bin/clawfetch", // Local install
-			"/usr/local/bin/clawfetch",
-			"/usr/bin/clawfetch",
+			'clawfetch', // In PATH
+			'./node_modules/.bin/clawfetch', // Local install
+			'/usr/local/bin/clawfetch',
+			'/usr/bin/clawfetch',
 		];
 
 		for (const candidate of candidates) {
 			try {
-				await execAsync(candidate, ["--help"]);
+				await execAsync(candidate, ['--help']);
 				this.clawfetchPath = candidate;
 				return candidate;
 			} catch {
@@ -91,7 +87,7 @@ export class ClawfetchProvider implements WebfetchProvider {
 
 		if (!clawfetch) {
 			throw new ProviderError(
-				"clawfetch not installed. Install with: npm install -g clawfetch",
+				'clawfetch not installed. Install with: npm install -g clawfetch',
 				this.name,
 			);
 		}

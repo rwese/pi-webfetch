@@ -21,12 +21,9 @@ export const WEBFETCH_TOOL_PARAMS = Type.Object({
 		Type.String({ description: 'Optional research question for AI analysis' }),
 	),
 	provider: Type.Optional(
-		Type.Union(
-			[Type.Literal('default'), Type.Literal('clawfetch'), Type.Literal('gh-cli')],
-			{
-				description: 'Force specific provider (gh-cli for GitHub issues/repos)',
-			},
-		),
+		Type.Union([Type.Literal('default'), Type.Literal('clawfetch'), Type.Literal('gh-cli')], {
+			description: 'Force specific provider (gh-cli for GitHub issues/repos)',
+		}),
 	),
 });
 
@@ -46,7 +43,12 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 			let content = theme.fg('toolTitle', theme.bold('🌐 webfetch '));
 			content += theme.fg('muted', parseUrlForDisplay(args.url));
 			if (args.query) {
-				content += ' ' + theme.fg('accent', `"${args.query.slice(0, 50)}${args.query.length > 50 ? '...' : ''}"`);
+				content +=
+					' ' +
+					theme.fg(
+						'accent',
+						`"${args.query.slice(0, 50)}${args.query.length > 50 ? '...' : ''}"`,
+					);
 			}
 			text.setText(content);
 			return text;
@@ -75,7 +77,7 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 
 			const details = result.details as WebfetchDetails | undefined;
 			const phase = details?.phase || 'idle';
-			const textContent = result.content.find(c => c.type === 'text');
+			const textContent = result.content.find((c) => c.type === 'text');
 			const textValue = textContent?.text || '';
 			const lines = textValue.split('\n');
 
@@ -110,7 +112,8 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 				}
 				content += '\n' + theme.fg('muted', `→ ${lineCount} lines`);
 				if (preview) {
-					content += ' ' + theme.fg('muted', `"${preview}${preview.length >= 60 ? '...' : ''}"`);
+					content +=
+						' ' + theme.fg('muted', `"${preview}${preview.length >= 60 ? '...' : ''}"`);
 				}
 			} else {
 				// Expanded view: show full content
@@ -159,6 +162,7 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 					initialPhase: params.query ? 'analyzing' : 'processing',
 					streamingPhase: 'streaming',
 				},
+				params.provider,
 			);
 
 			return result;

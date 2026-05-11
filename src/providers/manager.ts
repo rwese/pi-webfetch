@@ -16,10 +16,10 @@ import {
 	type FetchConfig,
 	type URLDetection,
 	ProviderError,
-} from "./types";
-import { DefaultProvider } from "./default";
-import { ClawfetchProvider } from "./clawfetch";
-import { GhCliProvider } from "./gh-cli";
+} from './types.js';
+import { DefaultProvider } from './default.js';
+import { ClawfetchProvider } from './clawfetch.js';
+import { GhCliProvider } from './gh-cli.js';
 
 /**
  * Provider manager configuration
@@ -178,10 +178,7 @@ export class ProviderManager {
 	/**
 	 * Select the best provider for a URL
 	 */
-	async selectProvider(
-		url: string,
-		config?: FetchConfig,
-	): Promise<WebfetchProvider | null> {
+	async selectProvider(url: string, config?: FetchConfig): Promise<WebfetchProvider | null> {
 		// If forced provider is configured, use it
 		if (this.config.forcedProvider) {
 			const forced = this.providers.get(this.config.forcedProvider);
@@ -191,10 +188,8 @@ export class ProviderManager {
 		}
 
 		// If configured in options, use that
-		if (config && "provider" in config) {
-			const forced = this.providers.get(
-				(config as { provider?: string }).provider || "",
-			);
+		if (config && 'provider' in config) {
+			const forced = this.providers.get((config as { provider?: string }).provider || '');
 			if (forced && (await this.isProviderAvailable(forced))) {
 				return forced;
 			}
@@ -212,12 +207,12 @@ export class ProviderManager {
 
 		// GitHub URLs: prefer gh-cli (authenticated, structured data)
 		if (urlDetection.isGitHub) {
-			const ghCli = this.providers.get("gh-cli");
+			const ghCli = this.providers.get('gh-cli');
 			if (ghCli && (await this.isProviderAvailable(ghCli))) {
 				return ghCli;
 			}
 			// Fall back to clawfetch if gh-cli not available
-			const clawfetch = this.providers.get("clawfetch");
+			const clawfetch = this.providers.get('clawfetch');
 			if (clawfetch && (await this.isProviderAvailable(clawfetch))) {
 				return clawfetch;
 			}
@@ -225,7 +220,7 @@ export class ProviderManager {
 
 		// Reddit URLs: prefer clawfetch (has RSS fast path)
 		if (urlDetection.isReddit) {
-			const clawfetch = this.providers.get("clawfetch");
+			const clawfetch = this.providers.get('clawfetch');
 			if (clawfetch && (await this.isProviderAvailable(clawfetch))) {
 				return clawfetch;
 			}
@@ -259,7 +254,7 @@ export class ProviderManager {
 		if (!provider) {
 			return {
 				success: false,
-				error: "No suitable provider available",
+				error: 'No suitable provider available',
 				attemptedProviders: [],
 			};
 		}

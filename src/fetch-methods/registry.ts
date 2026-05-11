@@ -4,8 +4,8 @@
  * Manages registration and selection of fetch method strategies.
  */
 
-import type { FetchMethod, FetchMethodOptions } from "./strategy";
-import type { FetchResult } from "../../extensions/types.js";
+import type { FetchMethod, FetchMethodOptions } from './strategy.js';
+import type { FetchResult } from '../../extensions/types.js';
 
 /**
  * Registry for fetch method strategies
@@ -61,11 +61,11 @@ export class FetchMethodRegistry {
 		const method = this.selectForUrl(url);
 		if (!method) {
 			return {
-				content: [{ type: "text", text: "No suitable fetch method found" }],
+				content: [{ type: 'text', text: 'No suitable fetch method found' }],
 				details: {
 					url,
 					status: 0,
-					processedAs: "error",
+					processedAs: 'error',
 					contentType: null,
 				},
 			};

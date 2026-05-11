@@ -4,14 +4,14 @@
  * Strategy implementation for static HTTP fetch without browser rendering.
  */
 
-import type { FetchMethod, FetchMethodOptions } from "./strategy";
-import type { FetchResult } from "../../extensions/types.js";
+import type { FetchMethod, FetchMethodOptions } from './strategy.js';
+import type { FetchResult } from '../../extensions/types.js';
 
 /**
  * Static fetch method - uses native fetch without JavaScript rendering
  */
 export class StaticFetchMethod implements FetchMethod {
-	readonly name = "static";
+	readonly name = 'static';
 	readonly priority = 0; // Lowest priority - fallback only
 
 	canHandle(_url: string): boolean {
@@ -36,12 +36,14 @@ export class StaticFetchMethod implements FetchMethod {
 
 			// Return result directly
 			const result: FetchResult = {
-				content: [{ type: "text", text: `Static fetch returned status: ${response.status}` }],
+				content: [
+					{ type: 'text', text: `Static fetch returned status: ${response.status}` },
+				],
 				details: {
 					url,
 					status: response.status,
-					contentType: response.headers.get("content-type"),
-					processedAs: "fallback",
+					contentType: response.headers.get('content-type'),
+					processedAs: 'fallback',
 				},
 			};
 
@@ -51,14 +53,14 @@ export class StaticFetchMethod implements FetchMethod {
 			return {
 				content: [
 					{
-						type: "text",
+						type: 'text',
 						text: `Static fetch failed: ${error instanceof Error ? error.message : String(error)}`,
 					},
 				],
 				details: {
 					url,
 					status: 0,
-					processedAs: "error",
+					processedAs: 'error',
 					contentType: null,
 				},
 			};

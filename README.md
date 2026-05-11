@@ -1,6 +1,6 @@
 # @rwese/pi-webfetch
 
-Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) - fetches remote URLs with browser rendering.
+Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) and Codex MCP - fetches remote URLs with browser rendering.
 
 ## Features
 
@@ -12,13 +12,47 @@ Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) - 
 
 ## Tools
 
+The same tools are exposed through both the pi extension and the MCP server.
+
+## Direct CLI
+
+Run the package directly from npm:
+
+```bash
+npx -y @rwese/pi-webfetch --help
+npx -y @rwese/pi-webfetch webfetch "https://example.com"
+npx -y @rwese/pi-webfetch webfetch "https://example.com" --query "What is the main topic?"
+npx -y @rwese/pi-webfetch spa "https://reddit.com/r/example" --wait-for networkidle
+npx -y @rwese/pi-webfetch download "https://example.com/file.pdf"
+npx -y @rwese/pi-webfetch providers
+npx -y @rwese/pi-webfetch clear-cache --url "https://example.com"
+npx -y @rwese/pi-webfetch cache-stats --json
+```
+
+After installation, the binary is available as `pi-webfetch`:
+
+```bash
+pi-webfetch webfetch "https://example.com" --json
+pi-webfetch mcp
+```
+
+Use `--json` with non-MCP commands for structured output.
+
 ### `webfetch`
 
 Standard fetch - tries browser first for HTML, auto-fallback.
 
 ```
 webfetch --url "https://example.com"
+webfetch --url "https://example.com" --query "What is the main topic?"
+webfetch --url "https://github.com/user/repo/issues/123" --provider "gh-cli"
 ```
+
+**Options:**
+
+- `url` - URL to fetch
+- `query` - Optional research question for AI analysis
+- `provider` - Optional provider override: `"default"`, `"clawfetch"`, or `"gh-cli"`
 
 ### `webfetch-spa`
 
@@ -29,15 +63,16 @@ webfetch-spa --url "https://reddit.com/r/example"
 ```
 
 **Options:**
+
 - `waitFor` - `"networkidle"` (default) or `"domcontentloaded"`
 - `timeout` - Timeout in ms (default: 30000)
 
 ### `download-file`
 
-Download a file to a specific destination.
+Download a file from a URL to a temp location.
 
 ```
-download-file --url "https://example.com/file.pdf" --destination "/path/to/save/file.pdf"
+download-file --url "https://example.com/file.pdf"
 ```
 
 **Requires:** `agent-browser` CLI
@@ -46,9 +81,76 @@ download-file --url "https://example.com/file.pdf" --destination "/path/to/save/
 npm i -g agent-browser && agent-browser install
 ```
 
+### `webfetch-providers`
+
+Check installed providers and their priorities.
+
+```
+webfetch-providers
+```
+
+### `webfetch-clear-cache`
+
+Clear one cached URL or all cached content.
+
+```
+webfetch-clear-cache --url "https://example.com"
+webfetch-clear-cache
+```
+
+### `webfetch-cache-stats`
+
+Show cache item count and total size.
+
+```
+webfetch-cache-stats
+```
+
+## Codex MCP Server
+
+This package includes a Codex plugin manifest at `.codex-plugin/plugin.json` and an MCP config at `.mcp.json`.
+
+Start the published MCP server:
+
+```bash
+npx -y @rwese/pi-webfetch mcp
+```
+
+Start the local development MCP server from the repository root:
+
+```bash
+npm install
+npm run mcp
+```
+
+The server uses stdio transport and is intended to be launched by an MCP client. For Codex plugin usage, point Codex at this repository as a local plugin; Codex reads `.codex-plugin/plugin.json`, then starts the server using `.mcp.json`.
+
+Manual MCP config:
+
+```json
+{
+	"mcpServers": {
+		"pi-webfetch": {
+			"command": "npx",
+			"args": ["-y", "@rwese/pi-webfetch", "mcp"]
+		}
+	}
+}
+```
+
+The MCP server exposes:
+
+- `webfetch`
+- `webfetch-spa`
+- `download-file`
+- `webfetch-providers`
+- `webfetch-clear-cache`
+- `webfetch-cache-stats`
+
 ## How It Works
 
 `webfetch` automatically:
+
 1. Probes Content-Type via HEAD request
 2. Skips browser for binary types (PDF, ZIP, images, etc.)
 3. Tries `agent-browser` for HTML pages
@@ -76,17 +178,16 @@ npm install @rwese/pi-webfetch
 ## API
 
 ```typescript
-import { fetchUrl, downloadFile } from "@rwese/pi-webfetch";
+import { fetchUrl, downloadFile } from '@rwese/pi-webfetch';
 
 // Fetch URL
-const result = await fetchUrl("https://example.com");
+const result = await fetchUrl('https://example.com');
 // result.content - Array of { type: "text", text: string }
 // result.details - { url, contentType, status, processedAs, browserWarning, ... }
 
-// Download file to specific path
-const download = await downloadFile("https://example.com/file.pdf", "/path/to/save.pdf");
-// download.success - boolean
-// download.size - file size in bytes
+// Download file to temp path
+const download = await downloadFile('https://example.com/file.pdf');
+// download.tempPath - temp file path
 // download.contentType - Content-Type header
 ```
 
@@ -94,6 +195,7 @@ const download = await downloadFile("https://example.com/file.pdf", "/path/to/sa
 
 ```bash
 npm install
+npm run build
 npm test        # Run tests
 npm run validate  # Type check + lint + test
 ```

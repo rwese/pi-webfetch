@@ -2,6 +2,6 @@
  * Clawfetch internal modules
  */
 
-export * from "./url-detector";
-export * from "./output-parser";
-export * from "./mutex";
+export * from './url-detector.js';
+export * from './output-parser.js';
+export * from './mutex.js';

@@ -5,7 +5,7 @@
  * Falls back when no browser provider is available or as an alternative.
  */
 
-import { execAsync } from "../utils/process.js";
+import { execAsync } from '../utils/process.js';
 import {
 	type WebfetchProvider,
 	type ProviderFetchResult,
@@ -13,22 +13,15 @@ import {
 	type URLDetection,
 	type ProviderConfig,
 	ProviderError,
-} from "./types";
-import {
-	parseGitHubUrl,
-	detectGitHubUrl,
-	isGitHubUrl,
-} from "./gh/url-parser";
-import {
-	fetchByType,
-	execGh,
-} from "./gh/content-fetcher";
+} from './types.js';
+import { parseGitHubUrl, detectGitHubUrl, isGitHubUrl } from './gh/url-parser.js';
+import { fetchByType, execGh } from './gh/content-fetcher.js';
 
 /**
  * GitHub CLI provider using the gh command
  */
 export class GhCliProvider implements WebfetchProvider {
-	readonly name = "gh-cli";
+	readonly name = 'gh-cli';
 	readonly priority = 8; // Higher than clawfetch (5), lower than default (10)
 	// But for GitHub URLs, it will be preferred in provider selection
 
@@ -52,15 +45,15 @@ export class GhCliProvider implements WebfetchProvider {
 		}
 
 		const candidates = [
-			"gh", // In PATH
-			"/usr/local/bin/gh",
-			"/usr/bin/gh",
-			"/opt/homebrew/bin/gh",
+			'gh', // In PATH
+			'/usr/local/bin/gh',
+			'/usr/bin/gh',
+			'/opt/homebrew/bin/gh',
 		];
 
 		for (const candidate of candidates) {
 			try {
-				await execAsync(candidate, ["--version"]);
+				await execAsync(candidate, ['--version']);
 				this.ghPath = candidate;
 				return candidate;
 			} catch {
@@ -83,7 +76,7 @@ export class GhCliProvider implements WebfetchProvider {
 
 		if (this.authenticated === null) {
 			try {
-				await execAsync(gh, ["auth", "status"]);
+				await execAsync(gh, ['auth', 'status']);
 				this.authenticated = true;
 			} catch {
 				this.authenticated = false;
@@ -108,16 +101,13 @@ export class GhCliProvider implements WebfetchProvider {
 
 		if (!gh) {
 			throw new ProviderError(
-				"gh CLI not installed. Install from: https://cli.github.com",
+				'gh CLI not installed. Install from: https://cli.github.com',
 				this.name,
 			);
 		}
 
 		if (!this.authenticated) {
-			throw new ProviderError(
-				"gh CLI not authenticated. Run: gh auth login",
-				this.name,
-			);
+			throw new ProviderError('gh CLI not authenticated. Run: gh auth login', this.name);
 		}
 
 		const parsed = parseGitHubUrl(url);

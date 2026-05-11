@@ -1,0 +1,29 @@
+{
+	"name": "pi-webfetch",
+	"version": "0.2.1",
+	"description": "Webfetch extension for pi coding agent and Codex.",
+	"author": {
+		"name": "rwese",
+		"url": "https://github.com/rwese"
+	},
+	"homepage": "https://github.com/rwese/pi-webfetch",
+	"repository": "https://github.com/rwese/pi-webfetch",
+	"license": "MIT",
+	"keywords": ["webfetch", "fetch", "web", "mcp", "codex"],
+	"mcpServers": "./.mcp.json",
+	"interface": {
+		"displayName": "pi-webfetch",
+		"shortDescription": "Fetch URLs, SPAs, files, and GitHub content from Codex.",
+		"longDescription": "Exposes pi-webfetch as Codex MCP tools for fetching web pages, rendering JavaScript-heavy pages, downloading files, checking provider status, and managing cache entries.",
+		"developerName": "rwese",
+		"category": "Productivity",
+		"capabilities": ["Interactive"],
+		"websiteURL": "https://github.com/rwese/pi-webfetch",
+		"defaultPrompt": [
+			"Fetch this URL and summarize it.",
+			"Render this SPA and extract the main content.",
+			"Check available webfetch providers."
+		],
+		"brandColor": "#2563EB"
+	}
+}

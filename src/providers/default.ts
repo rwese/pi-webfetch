@@ -5,8 +5,8 @@
  * This is the current/default implementation that provides browser-based fetching.
  */
 
-import { load } from "cheerio";
-import { execAsync } from "../utils/process.js";
+import { load } from 'cheerio';
+import { execAsync } from '../utils/process.js';
 import {
 	type WebfetchProvider,
 	type ProviderFetchResult,
@@ -14,7 +14,7 @@ import {
 	type URLDetection,
 	type ProviderConfig,
 	ProviderError,
-} from "./types";
+} from './types.js';
 import {
 	BrowserManager,
 	DEFAULT_BROWSER_IDLE_TIMEOUT,
@@ -22,14 +22,14 @@ import {
 	extractTitle,
 	cleanHtml,
 	calculateTextRatio,
-} from "./internal";
-import { detectUrl } from "./internal/url-detector";
+} from './internal/index.js';
+import { detectUrl } from './internal/url-detector.js';
 
 /**
  * Default provider using agent-browser + cheerio + turndown
  */
 export class DefaultProvider implements WebfetchProvider {
-	readonly name = "default";
+	readonly name = 'default';
 	readonly priority = 10;
 
 	/** Browser manager instance */
@@ -55,7 +55,7 @@ export class DefaultProvider implements WebfetchProvider {
 	 */
 	async isAvailable(): Promise<boolean> {
 		try {
-			await execAsync("agent-browser", ["--version"]);
+			await execAsync('agent-browser', ['--version']);
 			return true;
 		} catch {
 			return false;
@@ -74,12 +74,12 @@ export class DefaultProvider implements WebfetchProvider {
 	 */
 	async fetch(url: string, config?: ProviderConfig): Promise<ProviderFetchResult> {
 		const timeout = config?.timeout || 30000;
-		const waitFor = config?.waitFor || "networkidle";
+		const waitFor = config?.waitFor || 'networkidle';
 
 		// Check availability
 		if (!(await this.isAvailable())) {
 			throw new ProviderError(
-				"agent-browser not installed. Install with: npm i -g agent-browser && agent-browser install",
+				'agent-browser not installed. Install with: npm i -g agent-browser && agent-browser install',
 				this.name,
 			);
 		}
@@ -92,7 +92,7 @@ export class DefaultProvider implements WebfetchProvider {
 			const htmlResult = await this.browser.extractHtml(url, waitFor, timeout);
 
 			if (!htmlResult.html) {
-				throw new ProviderError("Failed to extract HTML from browser", this.name);
+				throw new ProviderError('Failed to extract HTML from browser', this.name);
 			}
 
 			// Clean HTML and check text ratio
@@ -108,17 +108,17 @@ export class DefaultProvider implements WebfetchProvider {
 				// Fallback: get plain text from browser
 				const textResult = await this.browser.extractText(url, waitFor, timeout);
 				content = textResult;
-				extractionMethod = "browser-text-fallback";
+				extractionMethod = 'browser-text-fallback';
 				// Low text ratio suggests plain text content (like raw GitHub files)
-				reportedContentType = "text/plain";
+				reportedContentType = 'text/plain';
 			} else {
 				// Convert HTML to markdown
 				content = createTurndownService().turndown(cleanedHtml);
 				extractionMethod =
-					htmlResult.contentSource === "body"
-						? "browser-html-body"
+					htmlResult.contentSource === 'body'
+						? 'browser-html-body'
 						: `browser-html-${htmlResult.contentSource}`;
-				reportedContentType = "text/html";
+				reportedContentType = 'text/html';
 			}
 
 			return {
@@ -131,7 +131,7 @@ export class DefaultProvider implements WebfetchProvider {
 				contentType: reportedContentType,
 				extractionMethod,
 				providerName: this.name,
-				fallbackSelector: htmlResult.contentSource === "body" ? "body" : undefined,
+				fallbackSelector: htmlResult.contentSource === 'body' ? 'body' : undefined,
 			};
 		} catch (error) {
 			if (error instanceof ProviderError) {

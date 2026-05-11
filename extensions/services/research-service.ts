@@ -80,6 +80,7 @@ export async function webfetchResearch(
 	fetchFn?: typeof fetch,
 	onStatus?: StatusCallback,
 	streamingConfig?: StreamingConfig | OnUpdateCallback,
+	provider?: string,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
@@ -114,7 +115,7 @@ export async function webfetchResearch(
 	} else {
 		onStatus?.('Fetching...', 'fetching');
 	}
-	const fetchResult = await fetchUrl(url, fetchFunc);
+	const fetchResult = await fetchUrl(url, fetchFunc, provider);
 
 	// If no query provided, return regular fetch result
 	if (!query) {
