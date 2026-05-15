@@ -140,6 +140,90 @@ describe('spawnPiAgent', () => {
 		expect(result.exitCode).toBe(0);
 	});
 
+	it('passes default research skills and tools', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query');
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		// Should include -p with the prompt
+		expect(args).toContain('-p');
+		// Should include --skill for agent-browser
+		expect(args).toContain('--skill');
+		// Should include --tools with default tools
+		expect(args).toContain('--tools');
+	});
+
+	it('allows disabling skills', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', { skills: [] });
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		// Should not include --skill
+		const skillIndex = args.indexOf('--skill');
+		expect(skillIndex).toBe(-1);
+	});
+
+	it('allows custom skills', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', { skills: ['github', 'planning'] });
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		// Should include --skill twice
+		const skillCount = args.filter(arg => arg === '--skill').length;
+		expect(skillCount).toBe(2);
+	});
+
+	it('allows passing extension paths', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', {
+			extensions: ['/path/to/extension.ts'],
+		});
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		// Should include -e with extension path
+		expect(args).toContain('-e');
+		expect(args).toContain('/path/to/extension.ts');
+	});
+
+	it('respects noExtensions option', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', { noExtensions: true });
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		// Should include --no-extensions
+		expect(args).toContain('--no-extensions');
+	});
+
 	it('rejects with PiAgentError on non-zero exit', async () => {
 		const fake = fakePiError('Analysis failed');
 

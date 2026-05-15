@@ -2,10 +2,13 @@
  * Pi Agent spawning for research queries
  *
  * Spawns a pi sub-agent to analyze fetched content based on a query.
+ * The subprocess gets access to relevant skills and tools for smarter analysis.
  */
 
 import type { ChildProcess } from 'node:child_process';
 import { cwd, env } from 'node:process';
+import { resolve } from 'node:path';
+import { homedir } from 'node:os';
 
 export interface SpawnPiAgentOptions {
 	/** Maximum time to wait for response in ms (default: 60000) */
@@ -16,7 +19,28 @@ export interface SpawnPiAgentOptions {
 	env?: Record<string, string>;
 	/** Callback for streaming output chunks (for live UI updates) */
 	onChunk?: (chunk: string) => void;
+	/** Additional skills to load for the research agent */
+	skills?: string[];
+	/** Additional extension paths to load */
+	extensions?: string[];
+	/** Explicitly disable extensions (default: false) */
+	noExtensions?: boolean;
 }
+
+/** Default skills for research queries */
+export const DEFAULT_RESEARCH_SKILLS = [
+	'agent-browser',
+	'planning',
+];
+
+/** Default tools enabled for research */
+export const DEFAULT_RESEARCH_TOOLS = [
+	'read',
+	'grep',
+	'find',
+	'ls',
+	'bash',
+];
 
 export interface SpawnPiAgentResult {
 	/** The analysis result from the sub-agent */
@@ -43,9 +67,78 @@ export class PiAgentError extends Error {
  * Find the pi executable path
  */
 function findPiExecutable(): string {
-	// For now, just return 'pi' and let it resolve via PATH
-	// Could be enhanced to check common locations
 	return 'pi';
+}
+
+/**
+ * Resolve skill paths from skill names
+ * Checks common skill directories for the skill
+ */
+function resolveSkillPaths(skillNames: string[]): string[] {
+	const skillDirs = [
+		resolve(homedir(), '.pi/agent/skills'),
+		resolve(homedir(), '.agents/skills'),
+		resolve(process.cwd(), '.pi/skills'),
+	];
+
+	const paths: string[] = [];
+	for (const skill of skillNames) {
+		for (const dir of skillDirs) {
+			const skillPath = resolve(dir, skill);
+			// Check if it exists (could be a symlink or directory)
+			try {
+				// Just check if it resolves to something
+				if (skillPath.includes(skill)) {
+					paths.push(skillPath);
+					break;
+				}
+			} catch {
+				// Path doesn't exist, continue
+			}
+		}
+	}
+	return paths;
+}
+
+/**
+ * Build the research prompt with context and instructions
+ */
+function buildResearchPrompt(query: string, content: string): string {
+	return `# Research Query
+
+${query}
+
+---
+
+## Content to Analyze
+
+${content}
+
+---
+
+## Instructions
+
+- Analyze the content above in relation to the research query
+- Use available tools (bash, grep, read) to search within the content if needed
+- If you need to fetch additional pages for context, use bash to call curl or webfetch
+- Provide a thorough, well-structured response
+- If searching for specific items (like "boot.img PQ3A.190801.002"), use grep/bash to search within the content
+
+## Available Tools
+
+- **read** - Read files or content sections
+- **grep** - Search within text content (use bash with grep for large content)
+- **find** - Find files in the filesystem
+- **ls** - List directory contents
+- **bash** - Execute shell commands (curl, grep, etc.)
+
+## Available Skills
+
+- **agent-browser** - For browser automation if interaction is needed
+- **planning** - For structured analysis approach
+
+---
+`;
 }
 
 /**
@@ -71,7 +164,15 @@ export async function spawnPiAgent(
 	query: string,
 	options: SpawnPiAgentOptions = {},
 ): Promise<SpawnPiAgentResult> {
-	const { timeout = 60000, cwd: cwdOption = cwd(), env: envOption = {}, onChunk } = options;
+	const {
+		timeout = 60000,
+		cwd: cwdOption = cwd(),
+		env: envOption = {},
+		onChunk,
+		skills = DEFAULT_RESEARCH_SKILLS,
+		extensions,
+		noExtensions = false,
+	} = options;
 
 	// Dynamic import for better testability
 	const { spawn } = await import('node:child_process');
@@ -79,15 +180,39 @@ export async function spawnPiAgent(
 	return new Promise((resolve, reject) => {
 		const piPath = findPiExecutable();
 
-		// Build the full prompt: research question + content to analyze
-		const prompt = `${query}\n\nContent to analyze:\n${content}`;
+		// Build args array
+		const args: string[] = [];
 
-		// Spawn pi with -p flag passing the prompt directly
-		// stdout will contain the analysis result
-		// Use --no-skills --no-extensions for faster startup
+		// Build the research prompt
+		const prompt = buildResearchPrompt(query, content);
+		args.push('-p', prompt);
+
+		// Add skills
+		if (skills.length > 0) {
+			const skillPaths = resolveSkillPaths(skills);
+			for (const path of skillPaths) {
+				args.push('--skill', path);
+			}
+		}
+
+		// Add explicit extension paths
+		if (extensions) {
+			for (const ext of extensions) {
+				args.push('-e', ext);
+			}
+		}
+
+		// Disable extensions discovery unless we have explicit extensions
+		if (noExtensions && !extensions?.length) {
+			args.push('--no-extensions');
+		}
+
+		// Enable useful tools (use allowlist for focused toolset)
+		args.push('--tools', DEFAULT_RESEARCH_TOOLS.join(','));
+
 		const proc: ChildProcess = spawn(
 			piPath,
-			['-p', prompt, '--no-skills', '--no-extensions'],
+			args,
 			{
 				stdio: ['ignore', 'pipe', 'pipe'],
 				cwd: cwdOption,
