@@ -123,6 +123,7 @@ ${content}
 - If you need to fetch additional pages for context, use bash to call curl or webfetch
 - Provide a thorough, well-structured response
 - If searching for specific items (like "boot.img PQ3A.190801.002"), use grep/bash to search within the content
+- Provide full links to found resources in footnotes with a short description
 
 ## Available Tools
 
