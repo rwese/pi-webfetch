@@ -34,10 +34,6 @@ function createDeps(): WebfetchMcpDependencies {
 				processedAs: 'spa' as const,
 			},
 		})),
-		downloadFile: vi.fn(async () => ({
-			tempPath: '/tmp/webfetch-download.txt',
-			contentType: 'text/plain',
-		})),
 		clearCache: vi.fn(async () => true),
 		clearAllCache: vi.fn(async () => 3),
 	};
@@ -49,7 +45,6 @@ describe('createWebfetchMcpServer', () => {
 		const tools = getRegisteredTools(server);
 
 		expect(Object.keys(tools).sort()).toEqual([
-			'download-file',
 			'webfetch',
 			'webfetch-clear-cache',
 		]);
@@ -97,27 +92,17 @@ describe('createWebfetchMcpServer', () => {
 		expect(result.isError).toBe(false);
 	});
 
-	it('delegates download and cache clear tools', async () => {
+	it('delegates cache clear tools', async () => {
 		const deps = createDeps();
 		const server = createWebfetchMcpServer(deps);
 		const tools = getRegisteredTools(server);
 
-		const download = await tools['download-file'].handler(
-			{ url: 'https://example.com/file.txt' },
-			{} as never,
-		);
 		const clearOne = await tools['webfetch-clear-cache'].handler(
 			{ url: 'https://example.com' },
 			{} as never,
 		);
 		const clearAll = await tools['webfetch-clear-cache'].handler({}, {} as never);
 
-		expect(deps.downloadFile).toHaveBeenCalledWith('https://example.com/file.txt');
-		expect(download.structuredContent).toEqual({
-			url: 'https://example.com/file.txt',
-			tempPath: '/tmp/webfetch-download.txt',
-			contentType: 'text/plain',
-		});
 		expect(deps.clearCache).toHaveBeenCalledWith('https://example.com');
 		expect(clearOne.structuredContent).toEqual({ url: 'https://example.com', cleared: true });
 		expect(deps.clearAllCache).toHaveBeenCalled();

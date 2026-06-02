@@ -14,14 +14,10 @@ export type {
 	WebfetchProvider,
 } from './types.js';
 
-// Tools
+// Tools - only webfetch and webfetch-clear-cache
 import {
 	registerWebfetchTool,
-	registerWebfetchSpaTool,
-	registerDownloadFileTool,
-	registerWebfetchProvidersTool,
 	registerWebfetchClearCacheTool,
-	registerWebfetchCacheStatsTool,
 } from './tools/index.js';
 
 // Commands
@@ -29,6 +25,8 @@ import {
 	registerWebfetchCommand,
 	registerWebfetchStatusCommand,
 	registerWebfetchInfoCommand,
+	registerWebfetchCacheCommand,
+	registerWebfetchProvidersCommand,
 } from './commands/index.js';
 
 // Fetch functions
@@ -75,21 +73,19 @@ export const MAX_MARKDOWN_SIZE = 100 * 1024;
 // ============================================================================
 
 export default function (pi: ExtensionAPI): void {
-	// Register tools
+	// Register tools (MCP-style, only essential ones)
 	registerWebfetchTool(pi);
-	registerWebfetchSpaTool(pi);
-	registerDownloadFileTool(pi);
-	registerWebfetchProvidersTool(pi);
 	registerWebfetchClearCacheTool(pi);
-	registerWebfetchCacheStatsTool(pi);
+
+	// Register commands (additional functionality via /command)
+	registerWebfetchCommand(pi);
+	registerWebfetchStatusCommand(pi);
+	registerWebfetchInfoCommand(pi);
+	registerWebfetchCacheCommand(pi);
+	registerWebfetchProvidersCommand(pi);
 
 	// Register session shutdown handler to clean up browser resources
 	pi.on('session_shutdown', async () => {
 		await closeAllSessionsProviders();
 	});
-
-	// Register commands
-	registerWebfetchCommand(pi);
-	registerWebfetchStatusCommand(pi);
-	registerWebfetchInfoCommand(pi);
 }

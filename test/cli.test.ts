@@ -46,10 +46,6 @@ function createDeps(): CliDependencies {
 				processedAs: 'spa' as const,
 			},
 		})),
-		downloadFile: vi.fn(async () => ({
-			tempPath: '/tmp/webfetch-download.txt',
-			contentType: 'text/plain',
-		})),
 		getProviderStatus: vi.fn(async () => [
 			{ name: 'default', available: true, priority: 10 },
 			{ name: 'clawfetch', available: false, priority: 5 },
@@ -123,23 +119,20 @@ describe('runCli', () => {
 		});
 	});
 
-	it('delegates provider, cache, download, and MCP commands', async () => {
+	it('delegates provider, cache, and MCP commands', async () => {
 		const deps = createDeps();
 		const { io, stdoutText } = createIo();
 
 		expect(await runCli(['providers'], deps, io)).toBe(0);
 		expect(await runCli(['clear-cache', '--url', 'https://example.com'], deps, io)).toBe(0);
 		expect(await runCli(['cache-stats', '--json'], deps, io)).toBe(0);
-		expect(await runCli(['download', 'https://example.com/file.txt'], deps, io)).toBe(0);
 		expect(await runCli(['mcp'], deps, io)).toBe(0);
 
 		expect(deps.getProviderStatus).toHaveBeenCalled();
 		expect(deps.clearCache).toHaveBeenCalledWith('https://example.com');
 		expect(deps.getCacheStats).toHaveBeenCalled();
-		expect(deps.downloadFile).toHaveBeenCalledWith('https://example.com/file.txt');
 		expect(deps.startMcpServer).toHaveBeenCalled();
 		expect(stdoutText()).toContain('| default | Available | 10 |');
-		expect(stdoutText()).toContain('File saved to: /tmp/webfetch-download.txt');
 	});
 
 	it('writes errors to stderr and exits non-zero', async () => {

@@ -5,7 +5,7 @@
 
 import { pathToFileURL } from 'node:url';
 import type { FetchResult } from './types.js';
-import { webfetchResearch, webfetchSPA, downloadFile, getProviderStatus } from './fetch.js';
+import { webfetchResearch, webfetchSPA, getProviderStatus } from './fetch.js';
 import { clearAllCache, clearCache, getCacheStats } from './cache.js';
 import { main as startMcpServer } from './mcp-server.js';
 
@@ -15,7 +15,6 @@ type WaitFor = 'networkidle' | 'domcontentloaded';
 export interface CliDependencies {
 	webfetchResearch: typeof webfetchResearch;
 	webfetchSPA: typeof webfetchSPA;
-	downloadFile: typeof downloadFile;
 	getProviderStatus: typeof getProviderStatus;
 	clearCache: typeof clearCache;
 	clearAllCache: typeof clearAllCache;
@@ -26,7 +25,6 @@ export interface CliDependencies {
 export const defaultCliDependencies: CliDependencies = {
 	webfetchResearch,
 	webfetchSPA,
-	downloadFile,
 	getProviderStatus,
 	clearCache,
 	clearAllCache,
@@ -50,7 +48,6 @@ const helpText = `pi-webfetch
 Usage:
   pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--json]
   pi-webfetch spa <url> [--wait-for networkidle|domcontentloaded] [--timeout <ms>] [--json]
-  pi-webfetch download <url> [--json]
   pi-webfetch providers [--json]
   pi-webfetch clear-cache [--url <url>] [--json]
   pi-webfetch cache-stats [--json]
@@ -59,7 +56,6 @@ Usage:
 Commands:
   webfetch      Fetch and process a URL, optionally with a research query
   spa           Fetch a JavaScript-heavy page with browser rendering
-  download      Download a URL to a temp file
   providers     Show available fetch providers
   clear-cache   Clear one cached URL or all cached content
   cache-stats   Show cache statistics
@@ -224,17 +220,6 @@ export async function runCli(
 				parseTimeout(parsed.flags.timeout),
 			);
 			writeFetchResult(io, result, wantsJson(parsed));
-			return 0;
-		}
-
-		if (parsed.command === 'download') {
-			const url = requireUrl(parsed);
-			const result = await deps.downloadFile(url);
-			if (wantsJson(parsed)) {
-				writeJson(io, { url, ...result });
-			} else {
-				write(io, `File saved to: ${result.tempPath}`);
-			}
 			return 0;
 		}
 

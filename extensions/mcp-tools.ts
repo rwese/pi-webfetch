@@ -6,7 +6,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod/v4';
 import type { FetchResult } from './types.js';
-import { webfetchResearch, downloadFile } from './fetch.js';
+import { webfetchResearch } from './fetch.js';
 import { clearAllCache, clearCache } from './cache.js';
 
 const providerSchema = z.enum(['default', 'clawfetch', 'gh-cli']);
@@ -17,24 +17,18 @@ const webfetchInputSchema = {
 	provider: providerSchema.optional().describe('Force a specific provider'),
 };
 
-const downloadFileInputSchema = {
-	url: z.string().url().describe('The URL to download'),
-};
-
 const clearCacheInputSchema = {
 	url: z.string().url().optional().describe('Specific URL to clear; omit to clear all cache'),
 };
 
 export interface WebfetchMcpDependencies {
 	webfetchResearch: typeof webfetchResearch;
-	downloadFile: typeof downloadFile;
 	clearCache: typeof clearCache;
 	clearAllCache: typeof clearAllCache;
 }
 
 export const defaultWebfetchMcpDependencies: WebfetchMcpDependencies = {
 	webfetchResearch,
-	downloadFile,
 	clearCache,
 	clearAllCache,
 };
@@ -88,23 +82,6 @@ export function registerWebfetchMcpTools(
 			toToolResult(
 				await deps.webfetchResearch(url, query, undefined, undefined, undefined, provider),
 			),
-	);
-
-	server.registerTool(
-		'download-file',
-		{
-			title: 'Download File',
-			description: 'Download a file from URL to temp location',
-			inputSchema: downloadFileInputSchema,
-		},
-		async ({ url }) => {
-			const result = await deps.downloadFile(url);
-			return toTextToolResult(`File saved to: ${result.tempPath}`, {
-				url,
-				tempPath: result.tempPath,
-				contentType: result.contentType,
-			});
-		},
 	);
 
 	server.registerTool(
