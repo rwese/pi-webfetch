@@ -5,7 +5,7 @@
  */
 
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
-import { clearCache, clearAllCache, getCacheStats } from '../cache.js';
+import { getCacheStats } from '../cache.js';
 
 /**
  * Register the webfetch:cache command for viewing cache stats
@@ -22,11 +22,6 @@ export function registerWebfetchCacheCommand(pi: ExtensionAPI): void {
 				'',
 				`| Cached items | ${stats.count} |`,
 				`| Total size | ${sizeMB} MB |`,
-				'',
-				'### Commands',
-				'',
-				'- `webfetch-clear-cache` - Clear all cached content',
-				'- `webfetch-clear-cache --url "<url>"` - Clear cache for specific URL',
 			];
 
 			ctx.ui.notify(lines.join('\n'), 'info');

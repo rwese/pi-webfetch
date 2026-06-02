@@ -14,10 +14,9 @@ export type {
 	WebfetchProvider,
 } from './types.js';
 
-// Tools - only webfetch and webfetch-clear-cache
+// Tools - only webfetch
 import {
 	registerWebfetchTool,
-	registerWebfetchClearCacheTool,
 } from './tools/index.js';
 
 // Commands
@@ -75,7 +74,6 @@ export const MAX_MARKDOWN_SIZE = 100 * 1024;
 export default function (pi: ExtensionAPI): void {
 	// Register tools (MCP-style, only essential ones)
 	registerWebfetchTool(pi);
-	registerWebfetchClearCacheTool(pi);
 
 	// Register commands (additional functionality via /command)
 	registerWebfetchCommand(pi);

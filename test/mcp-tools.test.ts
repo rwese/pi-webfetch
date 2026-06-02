@@ -34,24 +34,17 @@ function createDeps(): WebfetchMcpDependencies {
 				processedAs: 'spa' as const,
 			},
 		})),
-		clearCache: vi.fn(async () => true),
-		clearAllCache: vi.fn(async () => 3),
 	};
 }
 
 describe('createWebfetchMcpServer', () => {
-	it('registers all webfetch MCP tools with input schemas', () => {
+	it('registers webfetch tool with input schema', () => {
 		const server = createWebfetchMcpServer(createDeps());
 		const tools = getRegisteredTools(server);
 
-		expect(Object.keys(tools).sort()).toEqual([
-			'webfetch',
-			'webfetch-clear-cache',
-		]);
+		expect(Object.keys(tools).sort()).toEqual(['webfetch']);
 		expect(getSchemaShape(tools.webfetch)).toHaveProperty('url');
 		expect(getSchemaShape(tools.webfetch)).toHaveProperty('query');
-		expect(getSchemaShape(tools.webfetch)).toHaveProperty('provider');
-		expect(getSchemaShape(tools['webfetch-clear-cache'])).toHaveProperty('url');
 	});
 
 	it('delegates webfetch calls to the existing research service', async () => {
@@ -61,7 +54,6 @@ describe('createWebfetchMcpServer', () => {
 			{
 				url: 'https://example.com',
 				query: 'Summarize',
-				provider: 'gh-cli',
 			},
 			{} as never,
 		);
@@ -69,10 +61,6 @@ describe('createWebfetchMcpServer', () => {
 		expect(deps.webfetchResearch).toHaveBeenCalledWith(
 			'https://example.com',
 			'Summarize',
-			undefined,
-			undefined,
-			undefined,
-			'gh-cli',
 		);
 		expect(result.content[0]).toEqual({ type: 'text', text: 'fetched https://example.com' });
 		expect(result.structuredContent).toEqual({
@@ -90,22 +78,5 @@ describe('createWebfetchMcpServer', () => {
 			},
 		});
 		expect(result.isError).toBe(false);
-	});
-
-	it('delegates cache clear tools', async () => {
-		const deps = createDeps();
-		const server = createWebfetchMcpServer(deps);
-		const tools = getRegisteredTools(server);
-
-		const clearOne = await tools['webfetch-clear-cache'].handler(
-			{ url: 'https://example.com' },
-			{} as never,
-		);
-		const clearAll = await tools['webfetch-clear-cache'].handler({}, {} as never);
-
-		expect(deps.clearCache).toHaveBeenCalledWith('https://example.com');
-		expect(clearOne.structuredContent).toEqual({ url: 'https://example.com', cleared: true });
-		expect(deps.clearAllCache).toHaveBeenCalled();
-		expect(clearAll.structuredContent).toEqual({ clearedCount: 3 });
 	});
 });

@@ -94,6 +94,7 @@ export function execAsync(
 /**
  * Error class for execAsync failures
  */
+// fallow-ignore-next-line unused-exports
 export class ExecAsyncError extends Error {
 	constructor(
 		message: string,
@@ -115,6 +116,7 @@ export class ExecAsyncError extends Error {
  * @param options - Optional configuration
  * @returns Promise resolving to full result
  */
+// fallow-ignore-next-line unused-exports
 export async function execAsyncFull(
 	command: string,
 	args: string[],
@@ -165,6 +167,7 @@ export async function execAsyncFull(
 /**
  * Simple async mutex for preventing concurrent process access
  */
+// fallow-ignore-next-line unused-exports
 export class ProcessMutex {
 	private locked = false;
 	private waitQueue: Array<() => void> = [];
@@ -218,6 +221,7 @@ export class ProcessMutex {
 /**
  * Kill a child process and all its children
  */
+// fallow-ignore-next-line unused-exports
 export function killProcessTree(proc: ChildProcess): void {
 	if (proc.pid && proc.pid > 0) {
 		try {

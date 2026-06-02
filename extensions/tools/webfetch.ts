@@ -20,11 +20,6 @@ export const WEBFETCH_TOOL_PARAMS = Type.Object({
 	query: Type.Optional(
 		Type.String({ description: 'Optional research question for AI analysis' }),
 	),
-	provider: Type.Optional(
-		Type.Union([Type.Literal('default'), Type.Literal('clawfetch'), Type.Literal('gh-cli')], {
-			description: 'Force specific provider (gh-cli for GitHub issues/repos)',
-		}),
-	),
 });
 
 /**
@@ -162,7 +157,6 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 					initialPhase: params.query ? 'analyzing' : 'processing',
 					streamingPhase: 'streaming',
 				},
-				params.provider,
 			);
 
 			return result;

@@ -53,6 +53,7 @@ export type BinaryExtension = (typeof BINARY_EXTENSIONS)[number];
 /**
  * Check if a URL likely points to binary content
  */
+// fallow-ignore-next-line unused-exports
 export function isLikelyBinaryUrl(url: string): boolean {
 	const urlWithoutQuery = url.split(/[?#]/)[0].toLowerCase();
 	return BINARY_EXTENSIONS.some((ext) => urlWithoutQuery.endsWith(ext));

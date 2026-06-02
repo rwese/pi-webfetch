@@ -28,12 +28,14 @@ export interface SpawnPiAgentOptions {
 }
 
 /** Default skills for research queries */
+// fallow-ignore-next-line unused-exports
 export const DEFAULT_RESEARCH_SKILLS = [
 	'agent-browser',
 	'planning',
 ];
 
 /** Default tools enabled for research */
+// fallow-ignore-next-line unused-exports
 export const DEFAULT_RESEARCH_TOOLS = [
 	'read',
 	'grep',
@@ -52,6 +54,7 @@ export interface SpawnPiAgentResult {
 /**
  * Custom error for spawn failures
  */
+// fallow-ignore-next-line unused-exports
 export class PiAgentError extends Error {
 	constructor(
 		message: string,

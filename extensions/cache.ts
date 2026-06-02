@@ -76,6 +76,7 @@ export async function getCache(url: string): Promise<CacheEntry | null> {
 /**
  * Check if URL is cached
  */
+// fallow-ignore-next-line unused-exports
 export async function hasCache(url: string): Promise<boolean> {
 	const cachePath = getCachePath(url);
 	try {
@@ -89,6 +90,7 @@ export async function hasCache(url: string): Promise<boolean> {
 /**
  * Get the age of cached content in milliseconds
  */
+// fallow-ignore-next-line unused-exports
 export async function getCacheAge(url: string): Promise<number | null> {
 	const entry = await getCache(url);
 	if (!entry) return null;
