@@ -34,6 +34,18 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Published MCP command: `npx -y @rwese/pi-webfetch mcp`
 - Package dry run: `npm pack --dry-run`
 
+## Release / Publish Reference
+
+- Finish and verify work before release: `npm run validate` and `npm pack --dry-run`.
+- Commit all release-ready changes first; keep the worktree clean before tagging.
+- Choose SemVer bump from the change: `patch` for fixes/docs, `minor` for features, `major` for breaking changes.
+- Bump/tag with npm so `package.json`, `package-lock.json`, and the `vX.Y.Z` tag stay aligned:
+  - `npm version patch -m 'chore(release): bump version to %s'`
+  - or `npm version minor -m 'chore(release): bump version to %s'`
+  - or `npm version major -m 'chore(release): bump version to %s'`
+- Push commit and tag: `git push origin main --follow-tags`.
+- Publish only after approval: `npm publish --access public`.
+
 ## Behavior
 
 - Use absolute paths in commands and file references.
