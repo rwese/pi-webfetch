@@ -20,6 +20,22 @@ export interface WebfetchDetails {
 	cached?: boolean;
 	/** Age of cached content in milliseconds */
 	cacheAge?: number;
+	/**
+	 * Discovery hint from a provider (e.g. gh-cli advertising
+	 * GitHub fetch options such as `includeComments` that the
+	 * caller did not enable). Mirrors the in-content hint tail.
+	 */
+	githubHint?: string;
+}
+
+/**
+ * GitHub-specific fetch options. Mirrors `GitHubFetchOptions` from
+ * `src/providers/types.ts`; future options (e.g. `includeReviews`,
+ * `maxCommentDepth`) are additive on this object.
+ */
+export interface GitHubFetchOptions {
+	/** When true, include issue/PR conversation comments and PR review threads. */
+	includeComments?: boolean;
 }
 
 export interface FetchResult {
@@ -36,6 +52,7 @@ export interface ProviderConfig {
 	timeout?: number;
 	waitFor?: 'networkidle' | 'domcontentloaded';
 	forceProvider?: string;
+	github?: GitHubFetchOptions;
 }
 
 export interface ProviderCapabilities {

@@ -17,6 +17,23 @@ export interface FetchMetadata {
   excerpt?: string;
   publishedTime?: string;
   language?: string;
+  /**
+   * Provider-specific discovery hint surfaced for programmatic consumers.
+   * Currently used by the gh-cli provider to advertise GitHub fetch options
+   * (e.g. `includeComments`) that the caller did not enable.
+   */
+  githubHint?: string;
+}
+
+/**
+ * GitHub-specific fetch options.
+ *
+ * Future options (e.g. `maxCommentDepth`, `includeReviews`, `includeReactions`)
+ * are additive on this object so the provider signature stays stable.
+ */
+export interface GitHubFetchOptions {
+  /** When true, include issue/PR conversation comments and PR review threads. */
+  includeComments?: boolean;
 }
 
 /**
@@ -86,6 +103,8 @@ export interface ProviderConfig {
   userAgent?: string;
   /** Proxy settings */
   proxy?: string;
+  /** GitHub-specific fetch options */
+  github?: GitHubFetchOptions;
 }
 
 /**

@@ -119,7 +119,7 @@ export class GhCliProvider implements WebfetchProvider {
 		const timeout = config?.timeout || 30000;
 
 		try {
-			return await fetchByType(gh, parsed, timeout);
+			return await fetchByType(gh, parsed, timeout, config?.github);
 		} catch (error) {
 			if (error instanceof ProviderError) {
 				throw error;

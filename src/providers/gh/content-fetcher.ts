@@ -5,7 +5,7 @@
  */
 
 import { execAsync } from '../../utils/process.js';
-import type { ProviderFetchResult } from '../types.js';
+import type { GitHubFetchOptions, ProviderFetchResult } from '../types.js';
 import { ProviderError } from '../types.js';
 import type { ParsedGitHubUrl } from './url-parser.js';
 import {
@@ -17,6 +17,47 @@ import {
 	getFileIcon,
 	formatFileSize,
 } from './file-type-detector.js';
+
+/**
+ * URL types where the caller can opt in to richer content (comments, review threads).
+ * The hint is only emitted for these; other GitHub URL types (repo/tree/blob) are
+ * already self-contained.
+ */
+const HINTED_GITHUB_URL_TYPES = new Set<ParsedGitHubUrl['type']>(['issue', 'pr']);
+
+/**
+ * Build a markdown tip + matching machine-readable hint string that points callers
+ * at the GitHub fetch options they did not enable. The hint message is generic
+ * (no CLI-only syntax) so the same string can be surfaced through CLI, MCP, and
+ * the pi extension.
+ */
+export function buildGitHubHint(parsed: ParsedGitHubUrl, options?: GitHubFetchOptions): string {
+	const includeComments = options?.includeComments === true;
+	if (includeComments) {
+		// Caller already opted in; no need to advertise.
+		return '';
+	}
+	if (!HINTED_GITHUB_URL_TYPES.has(parsed.type)) {
+		return '';
+	}
+	return '> Tip: pass `includeComments: true` (CLI: `--include-comments`) to include issue comments and PR review threads.';
+}
+
+/**
+ * Append a discovery hint tail to fetched content. Returns the new content and
+ * the matching `githubHint` string (empty if no hint applies).
+ */
+export function appendGitHubHint(
+	content: string,
+	parsed: ParsedGitHubUrl,
+	options?: GitHubFetchOptions,
+): { content: string; hint: string } {
+	const hint = buildGitHubHint(parsed, options);
+	if (!hint) {
+		return { content, hint: '' };
+	}
+	return { content: `${content}\n\n${hint}`, hint };
+}
 
 /**
  * Execute gh CLI command
@@ -40,7 +81,9 @@ export async function fetchIssue(
 	repo: string,
 	number: number,
 	timeout: number,
+	options?: GitHubFetchOptions,
 ): Promise<ProviderFetchResult> {
+	const includeComments = options?.includeComments === true;
 	const args = [
 		'issue',
 		'view',
@@ -49,8 +92,10 @@ export async function fetchIssue(
 		repo,
 		'--json',
 		'title,body,state,author,labels,assignees,createdAt,updatedAt,comments',
-		'--comments',
 	];
+	if (includeComments) {
+		args.push('--comments');
+	}
 
 	const output = await execGh(gh, args, timeout);
 	const data = JSON.parse(output);
@@ -79,7 +124,7 @@ export async function fetchIssue(
 	}
 
 	// Add comments
-	if (comments.length > 0) {
+	if (includeComments && comments.length > 0) {
 		content += `---\n\n## Comments\n\n`;
 		for (const comment of comments) {
 			const date = comment.createdAt
@@ -90,11 +135,20 @@ export async function fetchIssue(
 		}
 	}
 
+	const parsed: ParsedGitHubUrl = {
+		owner: repo.split('/')[0] || '',
+		repo: repo.split('/')[1] || '',
+		type: 'issue',
+		number,
+	};
+	const withHint = appendGitHubHint(content.trim(), parsed, options);
+
 	return {
-		content: content.trim(),
+		content: withHint.content,
 		metadata: {
 			title: data.title,
 			author: data.author?.login,
+			githubHint: withHint.hint || undefined,
 		},
 		finalUrl: `https://github.com/${repo}/issues/${number}`,
 		status: 200,
@@ -112,7 +166,15 @@ export async function fetchPr(
 	repo: string,
 	number: number,
 	timeout: number,
+	options?: GitHubFetchOptions,
 ): Promise<ProviderFetchResult> {
+	const includeComments = options?.includeComments === true;
+	// When the caller opts in to PR conversation comments, we add `--comments`
+	// and pull the `comments` field. Review bodies always come back via
+	// `reviews[].body` (no extra flag required).
+	const jsonFields = includeComments
+		? 'title,body,state,author,additions,deletions,changedFiles,commits,reviews,comments'
+		: 'title,body,state,author,additions,deletions,changedFiles,commits,reviews';
 	const args = [
 		'pr',
 		'view',
@@ -120,8 +182,11 @@ export async function fetchPr(
 		'--repo',
 		repo,
 		'--json',
-		'title,body,state,author,additions,deletions,changedFiles,commits,reviews',
+		jsonFields,
 	];
+	if (includeComments) {
+		args.push('--comments');
+	}
 
 	const output = await execGh(gh, args, timeout);
 	const data = JSON.parse(output);
@@ -143,11 +208,56 @@ export async function fetchPr(
 		content += `${data.body}\n\n`;
 	}
 
+	// Review bodies (each review = one section; threaded discussion is collapsed
+	// into a single review entry by the gh CLI JSON output).
+	if (includeComments && Array.isArray(data.reviews) && data.reviews.length > 0) {
+		content += `---\n\n## Review Threads\n\n`;
+		for (const review of data.reviews) {
+			const author = review.author?.login || 'unknown';
+			const state = review.state || 'COMMENTED';
+			const submittedAt = review.submittedAt
+				? new Date(review.submittedAt).toISOString().split('T')[0]
+				: '';
+			const submitted = submittedAt ? ` (${submittedAt})` : '';
+			content += `### Review by @${author} — ${state}${submitted}\n\n`;
+			if (review.body) {
+				content += `${review.body}\n\n`;
+			}
+			content += `---\n\n`;
+		}
+	}
+
+	// PR conversation comments (distinct from review bodies).
+	if (includeComments && Array.isArray(data.comments) && data.comments.length > 0) {
+		content += `## Comments\n\n`;
+		for (const comment of data.comments) {
+			const author = comment.author?.login || 'unknown';
+			const createdAt = comment.createdAt
+				? new Date(comment.createdAt).toISOString().split('T')[0]
+				: '';
+			const created = createdAt ? ` (${createdAt})` : '';
+			content += `### @${author}${created}\n\n`;
+			if (comment.body) {
+				content += `${comment.body}\n\n`;
+			}
+			content += `---\n\n`;
+		}
+	}
+
+	const parsed: ParsedGitHubUrl = {
+		owner: repo.split('/')[0] || '',
+		repo: repo.split('/')[1] || '',
+		type: 'pr',
+		number,
+	};
+	const withHint = appendGitHubHint(content.trim(), parsed, options);
+
 	return {
-		content: content.trim(),
+		content: withHint.content,
 		metadata: {
 			title: data.title,
 			author: data.author?.login,
+			githubHint: withHint.hint || undefined,
 		},
 		finalUrl: `https://github.com/${repo}/pull/${number}`,
 		status: 200,
@@ -395,14 +505,15 @@ export async function fetchByType(
 	gh: string,
 	parsed: ParsedGitHubUrl,
 	timeout: number,
+	options?: GitHubFetchOptions,
 ): Promise<ProviderFetchResult> {
 	const repo = `${parsed.owner}/${parsed.repo}`;
 
 	if (parsed.type === 'issue' && parsed.number) {
-		return fetchIssue(gh, repo, parsed.number, timeout);
+		return fetchIssue(gh, repo, parsed.number, timeout, options);
 	}
 	if (parsed.type === 'pr' && parsed.number) {
-		return fetchPr(gh, repo, parsed.number, timeout);
+		return fetchPr(gh, repo, parsed.number, timeout, options);
 	}
 	if (parsed.type === 'repo') {
 		return fetchRepo(gh, repo, timeout);
