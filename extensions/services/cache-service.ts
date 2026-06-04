@@ -1,11 +1,11 @@
 /**
  * Cache Service
- * 
+ *
  * Handles caching logic for fetch results.
  */
 
 import type { FetchResult, WebfetchDetails } from '../types.js';
-import { getCache, setCache, formatAge } from '../cache.js';
+import { getCache, setCache, formatAge, type CacheKeyOptions } from '../cache.js';
 
 /**
  * Check if we should skip caching for a URL
@@ -50,7 +50,10 @@ export function buildCacheEntry(result: FetchResult): {
 /**
  * Cache a successful fetch result
  */
-export async function cacheFetchResult(result: FetchResult): Promise<FetchResult> {
+export async function cacheFetchResult(
+	result: FetchResult,
+	options?: CacheKeyOptions,
+): Promise<FetchResult> {
 	const url = result.details.url;
 	if (shouldSkipCache(url)) return result;
 
@@ -58,7 +61,7 @@ export async function cacheFetchResult(result: FetchResult): Promise<FetchResult
 	if (!entry) return result;
 
 	try {
-		await setCache(url, entry);
+		await setCache(url, entry, options);
 	} catch {
 		// Cache write failure is non-fatal
 	}
@@ -69,10 +72,13 @@ export async function cacheFetchResult(result: FetchResult): Promise<FetchResult
 /**
  * Get cached result if available
  */
-export async function getCachedResult(url: string): Promise<FetchResult | null> {
+export async function getCachedResult(
+	url: string,
+	options?: CacheKeyOptions,
+): Promise<FetchResult | null> {
 	if (shouldSkipCache(url)) return null;
 
-	const cached = await getCache(url);
+	const cached = await getCache(url, options);
 	if (!cached) return null;
 
 	const cacheAge = Date.now() - cached.cachedAt;

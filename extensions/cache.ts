@@ -18,10 +18,23 @@ async function ensureCacheDir(): Promise<void> {
 }
 
 /**
- * Generate a safe filename from URL using SHA256 hash
+ * Optional cache key modifiers. Callers that pass a `cacheKey` get a
+ * separate cache entry for that key, which lets them avoid stale
+ * results when the same URL can produce different content for
+ * different request options (e.g. `includeComments` on GitHub URLs).
  */
-function urlToCacheKey(url: string): string {
-	const hash = createHash('sha256').update(url).digest('hex');
+export interface CacheKeyOptions {
+	cacheKey?: string;
+}
+
+/**
+ * Generate a safe filename from URL (and an optional cache key suffix)
+ * using SHA256 hash. The key suffix is mixed in so two callers asking
+ * for the same URL with different options do not collide.
+ */
+function urlToCacheKey(url: string, options?: CacheKeyOptions): string {
+	const suffix = options?.cacheKey ? `:${options.cacheKey}` : '';
+	const hash = createHash('sha256').update(`${url}${suffix}`).digest('hex');
 	// First 32 chars of hash should be unique enough
 	return hash.slice(0, 32);
 }
@@ -29,8 +42,8 @@ function urlToCacheKey(url: string): string {
 /**
  * Get the cache file path for a URL
  */
-function getCachePath(url: string): string {
-	const key = urlToCacheKey(url);
+function getCachePath(url: string, options?: CacheKeyOptions): string {
+	const key = urlToCacheKey(url, options);
 	return join(CACHE_DIR, `${key}.json`);
 }
 
@@ -47,9 +60,13 @@ export interface CacheEntry {
 /**
  * Store content in cache
  */
-export async function setCache(url: string, data: CacheEntry): Promise<void> {
+export async function setCache(
+	url: string,
+	data: CacheEntry,
+	options?: CacheKeyOptions,
+): Promise<void> {
 	await ensureCacheDir();
-	const cachePath = getCachePath(url);
+	const cachePath = getCachePath(url, options);
 	const entry: CacheEntry = {
 		...data,
 		url,
@@ -61,9 +78,12 @@ export async function setCache(url: string, data: CacheEntry): Promise<void> {
 /**
  * Get cached content for a URL
  */
-export async function getCache(url: string): Promise<CacheEntry | null> {
+export async function getCache(
+	url: string,
+	options?: CacheKeyOptions,
+): Promise<CacheEntry | null> {
 	try {
-		const cachePath = getCachePath(url);
+		const cachePath = getCachePath(url, options);
 		const data = await readFile(cachePath, 'utf-8');
 		const entry: CacheEntry = JSON.parse(data);
 		return entry;
@@ -77,8 +97,8 @@ export async function getCache(url: string): Promise<CacheEntry | null> {
  * Check if URL is cached
  */
 // fallow-ignore-next-line unused-exports
-export async function hasCache(url: string): Promise<boolean> {
-	const cachePath = getCachePath(url);
+export async function hasCache(url: string, options?: CacheKeyOptions): Promise<boolean> {
+	const cachePath = getCachePath(url, options);
 	try {
 		await readFile(cachePath);
 		return true;
@@ -91,18 +111,24 @@ export async function hasCache(url: string): Promise<boolean> {
  * Get the age of cached content in milliseconds
  */
 // fallow-ignore-next-line unused-exports
-export async function getCacheAge(url: string): Promise<number | null> {
-	const entry = await getCache(url);
+export async function getCacheAge(url: string, options?: CacheKeyOptions): Promise<number | null> {
+	const entry = await getCache(url, options);
 	if (!entry) return null;
 	return Date.now() - entry.cachedAt;
 }
 
 /**
- * Clear cache for a specific URL
+ * Clear cache for a specific URL and cache key. With no `cacheKey`
+ * provided, the default (URL-only) entry is cleared. Pass the same
+ * `cacheKey` that was used for the cached read/write to drop the
+ * matching entry.
  */
-export async function clearCache(url: string): Promise<boolean> {
+export async function clearCache(
+	url: string,
+	options?: CacheKeyOptions,
+): Promise<boolean> {
 	try {
-		const cachePath = getCachePath(url);
+		const cachePath = getCachePath(url, options);
 		await rm(cachePath);
 		return true;
 	} catch {

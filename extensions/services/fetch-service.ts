@@ -19,6 +19,7 @@ import { buildFetchHeader } from './header-builder.js';
 import { cacheFetchResult, getCachedResult } from './cache-service.js';
 import { staticFetch, handleBinary } from './static-fetch.js';
 import { getProviderManager } from './session-manager.js';
+import type { CacheKeyOptions } from '../cache.js';
 
 const MAX_MARKDOWN_SIZE = 100 * 1024;
 
@@ -40,6 +41,24 @@ function readGithubHint(metadata: unknown): string | undefined {
 }
 
 /**
+ * Build a stable cache key suffix from provider fetch options. The cache
+ * uses URL-only keys by default; when an option affects the rendered
+ * output (e.g. `includeComments`), we need a separate cache entry so the
+ * first call does not poison subsequent calls.
+ */
+function buildCacheKeyFromOptions(options?: ProviderFetchOptions): CacheKeyOptions {
+	if (!options?.github) return {};
+	// Stable JSON serialisation - sort keys so the same options always
+	// produce the same key, regardless of declaration order.
+	const sortedKeys = Object.keys(options.github).sort();
+	const canonical: Record<string, unknown> = {};
+	for (const key of sortedKeys) {
+		canonical[key] = (options.github as Record<string, unknown>)[key];
+	}
+	return { cacheKey: JSON.stringify(canonical) };
+}
+
+/**
  * Main webfetch function - auto-detects best fetch method
  */
 export async function fetchUrl(
@@ -48,15 +67,18 @@ export async function fetchUrl(
 	provider?: string,
 	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
-	// Check cache first
-	const cached = await getCachedResult(url);
+	const cacheKey = buildCacheKeyFromOptions(options);
+
+	// Check cache first (scoped to the option-set so different option
+	// combinations cannot poison each other).
+	const cached = await getCachedResult(url, cacheKey);
 	if (cached) {
 		return cached;
 	}
 
 	// Check if URL is likely binary
 	if (isLikelyBinaryUrl(url)) {
-		return cacheFetchResult(await handleBinary(url, fetchFn));
+		return cacheFetchResult(await handleBinary(url, fetchFn), cacheKey);
 	}
 
 	// Check for provider-based fetch (default for HTML content)
@@ -78,7 +100,7 @@ export async function fetchUrl(
 			const providerResult = await manager.fetch(url, config);
 
 			if (providerResult && 'content' in providerResult) {
-				return processProviderResult(providerResult as ProviderFetchResult, url);
+				return processProviderResult(providerResult as ProviderFetchResult, url, cacheKey);
 			}
 		} catch {
 			// Provider failed, fall back to static fetch
@@ -86,13 +108,17 @@ export async function fetchUrl(
 	}
 
 	// Fallback to static fetch
-	return cacheFetchResult(await staticFetch(url, fetchFn));
+	return cacheFetchResult(await staticFetch(url, fetchFn), cacheKey);
 }
 
 /**
  * Process result from a provider
  */
-async function processProviderResult(result: ProviderFetchResult, url: string): Promise<FetchResult> {
+async function processProviderResult(
+	result: ProviderFetchResult,
+	url: string,
+	cacheKey: CacheKeyOptions = {},
+): Promise<FetchResult> {
 	const originalSize = Buffer.byteLength(result.content, 'utf-8');
 	let cleanedContent = removeMarkdownAnchors(result.content);
 
@@ -130,10 +156,13 @@ async function processProviderResult(result: ProviderFetchResult, url: string): 
 		...(githubHint ? { githubHint } : {}),
 	};
 
-	return cacheFetchResult({
-		content: [{ type: 'text' as const, text: buildFetchHeader(details) + content }],
-		details,
-	});
+	return cacheFetchResult(
+		{
+			content: [{ type: 'text' as const, text: buildFetchHeader(details) + content }],
+			details,
+		},
+		cacheKey,
+	);
 }
 
 /**
@@ -145,8 +174,10 @@ export async function webfetchSPA(
 	timeout: number = 30000,
 	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
+	const cacheKey = buildCacheKeyFromOptions(options);
+
 	// Check cache first
-	const cached = await getCachedResult(url);
+	const cached = await getCachedResult(url, cacheKey);
 	if (cached) {
 		return cached;
 	}
@@ -194,10 +225,13 @@ export async function webfetchSPA(
 			...(githubHint ? { githubHint } : {}),
 		};
 
-		return cacheFetchResult({
-			content: [{ type: 'text' as const, text: buildFetchHeader(details) + finalText }],
-			details,
-		});
+		return cacheFetchResult(
+			{
+				content: [{ type: 'text' as const, text: buildFetchHeader(details) + finalText }],
+				details,
+			},
+			cacheKey,
+		);
 	}
 
 	// Fallback

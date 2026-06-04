@@ -46,3 +46,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `WebfetchDetails.githubHint` and appends the in-content tail.
 - `test/cli.test.ts` and `test/mcp-tools.test.ts` extended for the
   new flag / schema field and forwarding to `webfetchResearch`.
+- New `test/cache-key-options.test.ts` covering the option-scoped
+  cache key fix.
+
+### Fixed
+
+- The cache was URL-only, so a previous `webfetch` call (without
+  `includeComments`) would return a stale result with the `> Tip:`
+  discovery hint when a later call passed `includeComments: true`.
+  The cache key is now scoped by a stable hash of the provider
+  fetch options, so option combinations that affect output
+  (`includeComments` today, future options additively) each get
+  their own cache entry.
