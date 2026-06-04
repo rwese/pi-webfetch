@@ -20,6 +20,12 @@ export const WEBFETCH_TOOL_PARAMS = Type.Object({
 	query: Type.Optional(
 		Type.String({ description: 'Optional research question for AI analysis' }),
 	),
+	includeComments: Type.Optional(
+		Type.Boolean({
+			description:
+				'When true, include issue comments and PR review threads (gh-cli only). Default: off (a discovery hint is shown instead).',
+		}),
+	),
 });
 
 /**
@@ -157,6 +163,10 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 					initialPhase: params.query ? 'analyzing' : 'processing',
 					streamingPhase: 'streaming',
 				},
+				undefined,
+				params.includeComments !== undefined
+					? { github: { includeComments: params.includeComments } }
+					: undefined,
 			);
 
 			return result;

@@ -8,7 +8,7 @@ import type { WebfetchDetails, FetchResult } from '../types.js';
 import type { AgentToolUpdateCallback } from '@mariozechner/pi-coding-agent';
 import { spawnPiAgent, type SpawnPiAgentResult } from '../pi-agent.js';
 import type { FetchPhase } from '../fetch-phases.js';
-import { fetchUrl } from './fetch-service.js';
+import { fetchUrl, type ProviderFetchOptions } from './fetch-service.js';
 
 /** Result type for research queries */
 export interface ResearchResult {
@@ -81,6 +81,7 @@ export async function webfetchResearch(
 	onStatus?: StatusCallback,
 	streamingConfig?: StreamingConfig | OnUpdateCallback,
 	provider?: string,
+	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
@@ -115,7 +116,7 @@ export async function webfetchResearch(
 	} else {
 		onStatus?.('Fetching...', 'fetching');
 	}
-	const fetchResult = await fetchUrl(url, fetchFunc, provider);
+	const fetchResult = await fetchUrl(url, fetchFunc, provider, options);
 
 	// If no query provided, return regular fetch result
 	if (!query) {

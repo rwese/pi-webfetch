@@ -4,7 +4,13 @@
  * Main orchestration for URL fetching with provider selection.
  */
 
-import type { WebfetchDetails, FetchResult, ProviderConfig, ProviderFetchResult } from '../types.js';
+import type {
+	WebfetchDetails,
+	FetchResult,
+	ProviderConfig,
+	ProviderFetchResult,
+	GitHubFetchOptions,
+} from '../types.js';
 import { removeMarkdownAnchors, extractEmbeddedImages } from '../markdown.js';
 import { truncateToSize, getTempFilePath } from '../utils/formatting.js';
 import { isLikelyBinaryUrl } from '../utils/url.js';
@@ -16,6 +22,23 @@ import { getProviderManager } from './session-manager.js';
 
 const MAX_MARKDOWN_SIZE = 100 * 1024;
 
+/** Provider fetch options (CLI / MCP / pi extension all funnel through this). */
+export interface ProviderFetchOptions {
+	/** GitHub-specific fetch options. Forwarded to the gh-cli provider. */
+	github?: GitHubFetchOptions;
+}
+
+/**
+ * Pull a `githubHint` string out of a provider's `metadata` record. The
+ * extension's `ProviderFetchResult.metadata` is a `Record<string, unknown>`,
+ * so we coerce carefully to keep the call site simple.
+ */
+function readGithubHint(metadata: unknown): string | undefined {
+	if (!metadata || typeof metadata !== 'object') return undefined;
+	const hint = (metadata as Record<string, unknown>).githubHint;
+	return typeof hint === 'string' && hint.length > 0 ? hint : undefined;
+}
+
 /**
  * Main webfetch function - auto-detects best fetch method
  */
@@ -23,6 +46,7 @@ export async function fetchUrl(
 	url: string,
 	fetchFn: typeof fetch = fetch,
 	provider?: string,
+	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
 	// Check cache first
 	const cached = await getCachedResult(url);
@@ -47,7 +71,10 @@ export async function fetchUrl(
 
 	if (shouldUseProvider) {
 		try {
-			const config: ProviderConfig = { forceProvider: provider || undefined };
+			const config: ProviderConfig = {
+				forceProvider: provider || undefined,
+				github: options?.github,
+			};
 			const providerResult = await manager.fetch(url, config);
 
 			if (providerResult && 'content' in providerResult) {
@@ -79,6 +106,16 @@ async function processProviderResult(result: ProviderFetchResult, url: string): 
 		content += `\n\n> 📎 **Embedded images** extracted to: ${imageResult.tempFilePath}`;
 	}
 
+	// Surface a provider's discovery hint (e.g. gh-cli advertising
+	// `includeComments`) in both the content tail and `details.githubHint`.
+	// Providers that already appended the hint to `content` won't get a
+	// duplicate because we only append when `metadata.githubHint` is set
+	// but the hint string is not already present at the end of content.
+	const githubHint = readGithubHint(result.metadata);
+	if (githubHint && !content.includes(githubHint)) {
+		content = `${content}\n\n${githubHint}`;
+	}
+
 	const details: WebfetchDetails = {
 		url,
 		contentType: result.contentType,
@@ -90,6 +127,7 @@ async function processProviderResult(result: ProviderFetchResult, url: string): 
 		extracted: true,
 		provider: result.providerName,
 		extractionMethod: result.extractionMethod,
+		...(githubHint ? { githubHint } : {}),
 	};
 
 	return cacheFetchResult({
@@ -105,6 +143,7 @@ export async function webfetchSPA(
 	url: string,
 	waitFor: string = 'networkidle',
 	timeout: number = 30000,
+	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
 	// Check cache first
 	const cached = await getCachedResult(url);
@@ -116,6 +155,7 @@ export async function webfetchSPA(
 	const config: ProviderConfig = {
 		timeout,
 		waitFor: waitFor as 'networkidle' | 'domcontentloaded',
+		github: options?.github,
 	};
 	const result = await manager.fetch(url, config);
 
@@ -134,6 +174,12 @@ export async function webfetchSPA(
 			finalText += `\n\n> 📎 **Embedded images** extracted to: ${imageResult.tempFilePath}`;
 		}
 
+		// Surface provider discovery hint (e.g. gh-cli's includeComments tip).
+		const githubHint = readGithubHint(providerResult.metadata);
+		if (githubHint && !finalText.includes(githubHint)) {
+			finalText = `${finalText}\n\n${githubHint}`;
+		}
+
 		const details: WebfetchDetails = {
 			url,
 			contentType: providerResult.contentType,
@@ -145,6 +191,7 @@ export async function webfetchSPA(
 			extracted: true,
 			provider: providerResult.providerName,
 			extractionMethod: providerResult.extractionMethod,
+			...(githubHint ? { githubHint } : {}),
 		};
 
 		return cacheFetchResult({

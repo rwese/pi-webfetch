@@ -46,7 +46,7 @@ export interface ParsedCommand {
 const helpText = `pi-webfetch
 
 Usage:
-  pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--json]
+  pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--include-comments] [--json]
   pi-webfetch spa <url> [--wait-for networkidle|domcontentloaded] [--timeout <ms>] [--json]
   pi-webfetch providers [--json]
   pi-webfetch clear-cache [--url <url>] [--json]
@@ -60,6 +60,10 @@ Commands:
   clear-cache   Clear one cached URL or all cached content
   cache-stats   Show cache statistics
   mcp           Start the stdio MCP server
+
+Options:
+  --include-comments     Include issue comments and PR review threads (gh-cli).
+                         Default: off (a discovery hint is shown instead).
 `;
 
 function write(io: CliIO, text: string): void {
@@ -141,6 +145,24 @@ function parseTimeout(value: string | boolean | undefined): number {
 	return timeout;
 }
 
+/**
+ * Parse a boolean CLI flag. Accepts the bare flag (true), `--flag=true`,
+ * `--flag=false`, or the literal strings `true`/`false`. Any other string
+ * value is treated as `true` so shorthand like `--flag yes` still works.
+ */
+function parseBoolean(value: string | boolean | undefined): boolean | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value === 'boolean') return value;
+	const normalized = value.trim().toLowerCase();
+	if (normalized === '' || normalized === 'true' || normalized === 'yes' || normalized === '1') {
+		return true;
+	}
+	if (normalized === 'false' || normalized === 'no' || normalized === '0') {
+		return false;
+	}
+	throw new Error(`Invalid boolean '${value}'`);
+}
+
 function wantsJson(parsed: ParsedCommand): boolean {
 	return parsed.flags.json === true;
 }
@@ -201,6 +223,7 @@ export async function runCli(
 		}
 
 		if (parsed.command === 'webfetch') {
+			const includeComments = parseBoolean(parsed.flags.includeComments);
 			const result = await deps.webfetchResearch(
 				requireUrl(parsed),
 				optionalString(parsed.flags.query),
@@ -208,6 +231,7 @@ export async function runCli(
 				undefined,
 				undefined,
 				parseProvider(parsed.flags.provider),
+				includeComments !== undefined ? { github: { includeComments } } : undefined,
 			);
 			writeFetchResult(io, result, wantsJson(parsed));
 			return 0;

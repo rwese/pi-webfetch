@@ -45,6 +45,7 @@ describe('createWebfetchMcpServer', () => {
 		expect(Object.keys(tools).sort()).toEqual(['webfetch']);
 		expect(getSchemaShape(tools.webfetch)).toHaveProperty('url');
 		expect(getSchemaShape(tools.webfetch)).toHaveProperty('query');
+		expect(getSchemaShape(tools.webfetch)).toHaveProperty('includeComments');
 	});
 
 	it('delegates webfetch calls to the existing research service', async () => {
@@ -61,6 +62,11 @@ describe('createWebfetchMcpServer', () => {
 		expect(deps.webfetchResearch).toHaveBeenCalledWith(
 			'https://example.com',
 			'Summarize',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
 		);
 		expect(result.content[0]).toEqual({ type: 'text', text: 'fetched https://example.com' });
 		expect(result.structuredContent).toEqual({
@@ -78,5 +84,49 @@ describe('createWebfetchMcpServer', () => {
 			},
 		});
 		expect(result.isError).toBe(false);
+	});
+
+	it('forwards includeComments=true as a github option', async () => {
+		const deps = createDeps();
+		const server = createWebfetchMcpServer(deps);
+		await getRegisteredTools(server).webfetch.handler(
+			{
+				url: 'https://github.com/foo/bar/issues/1',
+				includeComments: true,
+			},
+			{} as never,
+		);
+
+		expect(deps.webfetchResearch).toHaveBeenCalledWith(
+			'https://github.com/foo/bar/issues/1',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{ github: { includeComments: true } },
+		);
+	});
+
+	it('forwards includeComments=false as an explicit false option', async () => {
+		const deps = createDeps();
+		const server = createWebfetchMcpServer(deps);
+		await getRegisteredTools(server).webfetch.handler(
+			{
+				url: 'https://github.com/foo/bar/issues/1',
+				includeComments: false,
+			},
+			{} as never,
+		);
+
+		expect(deps.webfetchResearch).toHaveBeenCalledWith(
+			'https://github.com/foo/bar/issues/1',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{ github: { includeComments: false } },
+		);
 	});
 });

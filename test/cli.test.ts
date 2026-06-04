@@ -107,6 +107,7 @@ describe('runCli', () => {
 			undefined,
 			undefined,
 			'gh-cli',
+			undefined,
 		);
 		expect(JSON.parse(stdoutText())).toEqual({
 			content: [{ type: 'text', text: 'fetched https://example.com' }],
@@ -143,6 +144,72 @@ describe('runCli', () => {
 		expect(exitCode).toBe(1);
 		expect(stderrText()).toBe("Missing required URL for 'webfetch'\n");
 	});
+
+	it('forwards --include-comments to webfetchResearch', async () => {
+		const deps = createDeps();
+		const { io, stderrText } = createIo();
+		const exitCode = await runCli(
+			['webfetch', 'https://github.com/foo/bar/issues/1', '--include-comments'],
+			deps,
+			io,
+		);
+
+		expect(exitCode).toBe(0);
+		expect(stderrText()).toBe('');
+		expect(deps.webfetchResearch).toHaveBeenCalledWith(
+			'https://github.com/foo/bar/issues/1',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{ github: { includeComments: true } },
+		);
+	});
+
+	it('forwards --include-comments=false as an explicit false option', async () => {
+		const deps = createDeps();
+		const { io, stderrText } = createIo();
+		const exitCode = await runCli(
+			['webfetch', 'https://github.com/foo/bar/issues/1', '--include-comments=false'],
+			deps,
+			io,
+		);
+
+		expect(exitCode).toBe(0);
+		expect(stderrText()).toBe('');
+		expect(deps.webfetchResearch).toHaveBeenCalledWith(
+			'https://github.com/foo/bar/issues/1',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			{ github: { includeComments: false } },
+		);
+	});
+
+	it('omits github options when --include-comments is not provided', async () => {
+		const deps = createDeps();
+		const { io } = createIo();
+		await runCli(['webfetch', 'https://github.com/foo/bar/issues/1'], deps, io);
+
+		const lastCall = (deps.webfetchResearch as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+		expect(lastCall?.[6]).toBeUndefined();
+	});
+
+	it('rejects invalid --include-comments values', async () => {
+		const deps = createDeps();
+		const { io, stderrText } = createIo();
+		const exitCode = await runCli(
+			['webfetch', 'https://github.com/foo/bar/issues/1', '--include-comments=maybe'],
+			deps,
+			io,
+		);
+
+		expect(exitCode).toBe(1);
+		expect(stderrText()).toContain("Invalid boolean 'maybe'");
+	});
 });
 
 describe('compiled CLI', () => {
@@ -161,6 +228,7 @@ describe('compiled CLI', () => {
 
 		expect(stderr).toBe('');
 		expect(stdout).toContain('pi-webfetch webfetch <url>');
+		expect(stdout).toContain('--include-comments');
 		expect(stdout).toContain('pi-webfetch mcp');
 	});
 

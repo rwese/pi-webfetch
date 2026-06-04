@@ -11,6 +11,12 @@ import { webfetchResearch } from './fetch.js';
 const webfetchInputSchema = {
 	url: z.string().url().describe('The URL to fetch'),
 	query: z.string().optional().describe('Optional research question for AI analysis'),
+	includeComments: z
+		.boolean()
+		.optional()
+		.describe(
+			'When true, include issue comments and PR review threads (gh-cli only). Default: off (a discovery hint is shown instead).',
+		),
 };
 
 export interface WebfetchMcpDependencies {
@@ -58,9 +64,17 @@ export function registerWebfetchMcpTools(
 			description: 'Fetch and process web pages from URLs, optionally with a research query',
 			inputSchema: webfetchInputSchema,
 		},
-		async ({ url, query }) =>
+		async ({ url, query, includeComments }) =>
 			toToolResult(
-				await deps.webfetchResearch(url, query),
+				await deps.webfetchResearch(
+					url,
+					query,
+					undefined,
+					undefined,
+					undefined,
+					undefined,
+					includeComments !== undefined ? { github: { includeComments } } : undefined,
+				),
 			),
 	);
 }
