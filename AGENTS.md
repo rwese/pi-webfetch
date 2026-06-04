@@ -36,15 +36,16 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 
 ## Release / Publish Reference
 
-- Finish and verify work before release: `npm run validate` and `npm pack --dry-run`.
-- Commit all release-ready changes first; keep the worktree clean before tagging.
+- Prepare package docs/metadata before release: update `README.md`, `CHANGELOG.md`, `package.json` metadata/files/bin if behavior or package contents changed; run `npm install` after dependency/package metadata changes so `package-lock.json` is aligned.
+- Build and verify package contents: `npm run validate`, `npm run build`, then `npm pack --dry-run`; inspect output includes expected `dist/`, `extensions/`, `src/`, `.mcp.json`, `.codex-plugin/`, `README.md`, and `LICENSE` files.
+- Commit all release-ready source, docs, and package-lock changes first; keep the worktree clean before tagging.
 - Choose SemVer bump from the change: `patch` for fixes/docs, `minor` for features, `major` for breaking changes.
-- Bump/tag with npm so `package.json`, `package-lock.json`, and the `vX.Y.Z` tag stay aligned:
+- Bump/tag with npm (do not hand-edit versions) so `package.json`, `package-lock.json`, and the `vX.Y.Z` tag stay aligned:
   - `npm version patch -m 'chore(release): bump version to %s'`
   - or `npm version minor -m 'chore(release): bump version to %s'`
   - or `npm version major -m 'chore(release): bump version to %s'`
 - Push commit and tag: `git push origin main --follow-tags`.
-- Publish only after approval: `npm publish --access public`.
+- Publish only after approval: `npm publish --access public`; confirm the published package with `npm view @rwese/pi-webfetch version` and, if needed, `npx -y @rwese/pi-webfetch@<version> --help`.
 
 ## Behavior
 
