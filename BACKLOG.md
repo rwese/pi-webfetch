@@ -81,3 +81,26 @@
 - Task #4 (Resource Cleanup) is flagged as critical for production use
 - Concurrency issues could cause resource leaks under load
 - Browser processes not being cleaned up properly
+
+---
+
+## GitHub fetch gaps
+
+The GitHub fetch path (gh-cli provider + related surfaces) is intentionally
+narrow today. The following gaps were surfaced during the review of
+[`PLAN_GH_FETCH_OPTIONS.md`](./plans/PLAN_GH_FETCH_OPTIONS.md) and are
+deferred to future slices. They are recorded here so the boundary of the
+"issues + PR review threads via includeComments" feature is explicit.
+
+| Gap | Notes |
+|-----|-------|
+| Git-protocol URLs | `git+https://...`, `ssh://git@github.com/...`, and bare `.git` URLs are not handled by the gh-cli provider. They fall through to the default provider and currently surface whatever HTML the host returns. |
+| GitHub Enterprise hosts | Hosts other than `github.com` / `www.github.com` / `raw.githubusercontent.com` are not recognised by `parseGitHubUrl` / `detectGitHubUrl`. Enterprise customers need a host allowlist. |
+| Recursive directory listings | `fetchDirectory` returns the top-level contents of a tree only. Cross-file link following and recursive expansion are out of scope. |
+| PR diffs | The `gh pr view` fast path does not return diffs, checks, or file-level comments. The provider's `metadata` does not include them either. |
+| "Open issues in repo" expansion | Fetching a repo does not expand its open issues; callers must walk each issue URL individually. |
+| Size guard on `fetchFile` raw content | `fetchRawContent` is `curl`-based and has no size limit; large files could blow past the 100KB truncation step. |
+| Detector disagreement on `raw.githubusercontent.com` | The manager-level selector bypasses gh-cli for raw URLs (so the static fetch wins), but the gh-cli provider still detects them. Document / align. |
+| gh-cli as a hard requirement for GitHub fast path | The current chain prefers gh-cli and only falls back to clawfetch/default if it is unavailable. Some users without an authenticated `gh` want the default provider to win. |
+| Auto-fetching of referenced issues/PRs | A fetched body that references another issue/PR is not auto-expanded. |
+| Additional GitHub fetch options | Only `includeComments` is implemented today. Future options (`includeReviews`, `maxCommentDepth`, `includeReactions`) are additive on `GitHubFetchOptions`. |

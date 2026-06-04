@@ -46,6 +46,7 @@ Standard fetch - tries browser first for HTML, auto-fallback.
 webfetch --url "https://example.com"
 webfetch --url "https://example.com" --query "What is the main topic?"
 webfetch --url "https://github.com/user/repo/issues/123" --provider "gh-cli"
+webfetch --url "https://github.com/user/repo/issues/123" --include-comments
 ```
 
 **Options:**
@@ -53,6 +54,10 @@ webfetch --url "https://github.com/user/repo/issues/123" --provider "gh-cli"
 - `url` - URL to fetch
 - `query` - Optional research question for AI analysis
 - `provider` - Optional provider override: `"default"`, `"clawfetch"`, or `"gh-cli"`
+- `include-comments` - When using the `gh-cli` provider, include issue
+  conversation comments and PR review threads. **Default: off** for
+  issues and PRs. When off, a `> Tip:` discovery hint is appended to
+  the content and surfaced as `details.githubHint` / `metadata.githubHint`.
 
 ### `webfetch-spa`
 
@@ -157,6 +162,15 @@ The MCP server exposes:
 4. Extracts HTML → converts to markdown via turndown
 5. Falls back to text extraction if HTML quality is poor
 6. Falls back to static fetch with warning if browser unavailable
+
+For GitHub URLs, the `gh-cli` provider is preferred when it is available
+and authenticated. By default, issue and PR fetches return the issue/PR
+body plus metadata; passing `--include-comments` (or `includeComments:
+true` from MCP / the pi extension) adds the conversation comments and
+PR review threads. When the option is off, a `> Tip:` discovery hint
+is appended to the markdown content and also surfaced via
+`details.githubHint` / `metadata.githubHint` so programmatic callers
+can prompt the user to opt in.
 
 ## Installation
 
