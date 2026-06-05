@@ -19,6 +19,7 @@
 | Task | Priority | Status | Plan |
 |------|----------|--------|-------|
 | #4 Resource Cleanup & Concurrency | High | 🔄 Planning | [PLAN_TASK4_RESOURCE_CLEANUP.md](./PLAN_TASK4_RESOURCE_CLEANUP.md) |
+| #8 Better Error Messages | Medium | 🔄 In Progress | [docs/plans/PLAN_AGENT_ERROR_RESUME.md](./docs/plans/PLAN_AGENT_ERROR_RESUME.md) |
 
 ---
 
@@ -104,3 +105,4 @@ deferred to future slices. They are recorded here so the boundary of the
 | gh-cli as a hard requirement for GitHub fast path | The current chain prefers gh-cli and only falls back to clawfetch/default if it is unavailable. Some users without an authenticated `gh` want the default provider to win. |
 | Auto-fetching of referenced issues/PRs | A fetched body that references another issue/PR is not auto-expanded. |
 | Additional GitHub fetch options | Only `includeComments` is implemented today. Future options (`includeReviews`, `maxCommentDepth`, `includeReactions`) are additive on `GitHubFetchOptions`. |
+

@@ -3,6 +3,46 @@
 All notable changes to `@rwese/pi-webfetch` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **Resumable research subagent.** Research mode now spawns the
+  analysis subagent as a real, named, persistent pi session via
+  `pi -p --name "<n>" --session-id "<id>" "<prompt>"`. The session
+  id is `sha256(timestamp + url + query)` truncated to 16 hex chars
+  (deterministic for the same `(now, url, query)` triple, unique
+  per invocation). The session name is `webfetch-research: <host>`.
+- **Agent-error resume hint.** On the agent-error path, three new
+  optional fields are populated on `WebfetchDetails`:
+  - `subagentSessionId` - the persistent session id of the failed
+    subagent.
+  - `subagentSessionName` - the human-readable session name (visible
+    in `pi -r`).
+  - `resumeCommand` - the exact command the user should run. The
+    extension emits `pi --session <id>` (cwd-resumable, run from the
+    same dir). The CLI / MCP emit
+    `pi-webfetch webfetch <url> --query <query>` (a brand new
+    subagent session is created on the next call).
+- **Surface-specific notify channel.** A new optional `notify` field
+  on `WebfetchDetails` carries the multi-line resume hint. The
+  extension surfaces it via `ctx.ui.notify`; the CLI writes it to
+  stderr; the MCP server returns it under `_meta.details.notify` so
+  an MCP client (e.g. Codex) can show it to the user.
+
+### Changed
+
+- The in-content `## Fetch Result (Agent Error)` markdown body is
+  byte-identical to the pre-change baseline. The resume hint lives
+  outside the agent's context (TUI / stderr / `_meta.details`).
+- `extensions/pi-agent.ts::SpawnPiAgentOptions` accepts two additive
+  fields, `sessionId?` and `sessionName?`, which are passed through
+  as `--session-id <id>` and `--name <name>` argv. The result echoes
+  them back so callers can build resume hints.
+- `webfetchResearch` accepts three additive parameters, `now()`,
+  `notify`, and `resumeSource` (default `'extension'`). All
+  existing call sites compile.
+
 ## [0.6.0] - 2026-06-04
 
 ### Added

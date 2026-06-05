@@ -1,11 +1,22 @@
 # PRD: Subagent Sandbox & Workspace Lifecycle
 
-## Project Name: subagent-sandbox
-
 **Version:** 1.0.0-draft
 **Date:** 2026-06-04
-**Status:** Planning
+**Status:** Planning (re-scoped 2026-06-05; see note below)
 **Target:** `@rwese/pi-webfetch` research-mode subagent spawning
+
+> **Re-scope note (2026-06-05):** the original motivation for the workspace
+> dir was to give the error-ux flow (`docs/plans/PLAN_AGENT_ERROR_RESUME.md`)
+> a place to point the user at. That plan has since been re-shaped to make
+> the spawned `pi` itself a real, named, persistent session via
+> `pi -p --name "<n>" --session-id "<id>" "<prompt>"`, so the **subagent's
+> own session file** (under `~/.pi/agent/sessions/<encoded-cwd>/<ts>_<id>.jsonl`)
+> is the resume target. This PRD's `XDG_CACHE_HOME/pi-webfetch/sessions/...`
+> workspace is no longer required for the error-ux story and is **re-scoped
+> to a security-focused sandbox slice**: cwd isolation, process-group
+> cleanup, stale-dir sweep. The "keep dir on terminal failure" cleanup rule
+> is removed; subagent sessions are kept on disk and managed by the user
+> (via `pi -r`) and by pi's own session lifecycle.
 
 ---
 

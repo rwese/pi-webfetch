@@ -172,6 +172,31 @@ is appended to the markdown content and also surfaced via
 `details.githubHint` / `metadata.githubHint` so programmatic callers
 can prompt the user to opt in.
 
+## Resuming a Failed Research Subagent
+
+When research mode spawns the analysis subagent, it launches as a
+real, named, persistent pi session (`pi -p --name "<n>" --session-id
+"<id>" "<prompt>"`). The session id is
+`sha256(timestamp + url + query)` truncated to 16 hex chars, so each
+invocation gets its own resumable session. If the subagent fails:
+
+- **In a pi session (the extension):** a TUI notification shows
+  `pi --session <id>`. From the same working directory, run
+  `pi --session <id>` (or use `pi -r` and pick the session by name)
+  to open the failed subagent's transcript — it contains the URL,
+  the query, the fetched content, and the partial analysis.
+- **From the CLI / MCP:** a stderr line (CLI) or `_meta.details.notify`
+  (MCP) shows the synthesized session id and the re-run command
+  `pi-webfetch webfetch <url> --query <query>`. A brand new
+  subagent session is created on the next call and is itself
+  resumable.
+
+The fallback markdown in the agent's context is intentionally
+byte-identical to the pre-change baseline: the resume hint is
+carried in `WebfetchDetails` (`subagentSessionId`,
+`subagentSessionName`, `resumeCommand`) and in a side-channel
+`notify` so the conversation is not polluted.
+
 ## Installation
 
 ```bash
