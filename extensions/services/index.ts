@@ -16,7 +16,12 @@ export {
 export { fetchUrl, webfetchSPA, downloadFile } from './fetch-service.js';
 
 // Research queries
-export { webfetchResearch, type StatusCallback, type StreamingConfig } from './research-service.js';
+export {
+	webfetchResearch,
+	type StatusCallback,
+	type StreamingConfig,
+	type ResearchNotify,
+} from './research-service.js';
 
 // Cache service
 export {

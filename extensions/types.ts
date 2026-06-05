@@ -26,6 +26,28 @@ export interface WebfetchDetails {
 	 * caller did not enable). Mirrors the in-content hint tail.
 	 */
 	githubHint?: string;
+	/**
+	 * Persistent session id of the spawned research subagent. Present
+	 * on the agent-error path so the user can resume the failed
+	 * transcript via `pi --session <id>` (extension) or by re-running
+	 * the same `pi-webfetch webfetch …` invocation (CLI / MCP).
+	 *
+	 * @see docs/plans/PLAN_AGENT_ERROR_RESUME.md
+	 */
+	subagentSessionId?: string;
+	/**
+	 * Human-readable session name of the spawned research subagent.
+	 * Surfaced in `pi -r` pickers. Mirrors the `--name <name>` argv
+	 * the subagent was launched with.
+	 */
+	subagentSessionName?: string;
+	/**
+	 * The exact command the user should run to resume the failed
+	 * subagent. Extension: `pi --session <id>`. CLI / MCP: the
+	 * original `pi-webfetch webfetch <url> --query <query>` invocation
+	 * echoed back.
+	 */
+	resumeCommand?: string;
 }
 
 /**

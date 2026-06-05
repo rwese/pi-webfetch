@@ -9,6 +9,12 @@ import type { AgentToolUpdateCallback } from '@mariozechner/pi-coding-agent';
 import { spawnPiAgent, type SpawnPiAgentResult } from '../pi-agent.js';
 import type { FetchPhase } from '../fetch-phases.js';
 import { fetchUrl, type ProviderFetchOptions } from './fetch-service.js';
+import {
+	formatResumeHint,
+	deriveSessionId,
+	deriveSessionName,
+	type ResumeSource,
+} from '../utils/resume.js';
 
 /** Result type for research queries */
 export interface ResearchResult {
@@ -23,6 +29,13 @@ export type StatusCallback = (status: string, phase?: FetchPhase) => void;
 
 /** OnUpdate callback type alias for clarity */
 type OnUpdateCallback = AgentToolUpdateCallback<Record<string, unknown>>;
+
+/** Notification channel for the agent-error path. The surface decides
+ *  what to do with the message (TUI notify, stderr line, etc.). */
+export type ResearchNotify = (
+	message: string,
+	level: 'info' | 'warn' | 'error',
+) => void;
 
 /** Streaming callback configuration for webfetch */
 export interface StreamingConfig {
@@ -63,6 +76,13 @@ function yieldToEventLoop(): Promise<void> {
  * @param fetchFn - Optional fetch function (defaults to global fetch)
  * @param onStatus - Optional status callback for non-streaming updates
  * @param streamingConfig - Optional streaming configuration for real-time updates
+ * @param provider - Optional provider override
+ * @param options - Provider fetch options (e.g. GitHub-specific options)
+ * @param now - Optional clock injection for the resume-hint session id
+ * @param notify - Optional callback fired once on the agent-error path
+ * @param resumeSource - Which surface produced the error. Controls the
+ *                       `resumeCommand` (extension → `pi --session <id>`,
+ *                       CLI / MCP → `pi-webfetch webfetch <url> --query <q>`).
  * @returns FetchResult with analysis or error content
  *
  * @example
@@ -82,6 +102,9 @@ export async function webfetchResearch(
 	streamingConfig?: StreamingConfig | OnUpdateCallback,
 	provider?: string,
 	options?: ProviderFetchOptions,
+	now: () => number = () => Date.now(),
+	notify?: ResearchNotify,
+	resumeSource: ResumeSource = 'extension',
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
@@ -154,6 +177,11 @@ export async function webfetchResearch(
 			`\n---\n`,
 		].join('');
 
+		// Promote the subagent to a real, named, persistent pi session so
+		// the user can `pi --session <id>` into the failed transcript.
+		const sessionId = deriveSessionId(now(), url, query);
+		const sessionName = deriveSessionName(url);
+
 		// If we have streaming config, stream results directly to it
 		if (config) {
 			// Send initial header as first update
@@ -168,12 +196,16 @@ export async function webfetchResearch(
 						details: { phase: config.streamingPhase, url, streamed: true },
 					});
 				},
+				sessionId,
+				sessionName,
 			});
 
 			const researchDetails: WebfetchDetails = {
 				...fetchResult.details,
 				processedAs: 'research',
 				phase: 'complete',
+				subagentSessionId: agentResult.sessionId ?? sessionId,
+				subagentSessionName: agentResult.sessionName ?? sessionName,
 			};
 
 			// Return with final analysis (chunks already streamed)
@@ -184,11 +216,16 @@ export async function webfetchResearch(
 		}
 
 		// No streaming available, use regular behavior
-		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query);
+		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
+			sessionId,
+			sessionName,
+		});
 
 		const researchDetails: WebfetchDetails = {
 			...fetchResult.details,
 			processedAs: 'research',
+			subagentSessionId: agentResult.sessionId ?? sessionId,
+			subagentSessionName: agentResult.sessionName ?? sessionName,
 		};
 
 		return {
@@ -196,7 +233,10 @@ export async function webfetchResearch(
 			details: researchDetails,
 		};
 	} catch (error) {
-		// On agent error, fall back to showing the fetched content
+		// On agent error, fall back to showing the fetched content. The
+		// markdown body is byte-identical to the pre-change baseline on
+		// purpose: the resume hint lives in `details` and in the
+		// `notify` side-channel so the agent's context is not polluted.
 		const errorMessage = error instanceof Error ? error.message : String(error);
 		const fallbackHeader = [
 			`## Fetch Result (Agent Error)\n`,
@@ -205,9 +245,28 @@ export async function webfetchResearch(
 			`\n---\n`,
 		].join('');
 
+		const resumeSessionId = deriveSessionId(now(), url, query);
+		const resumeSessionName = deriveSessionName(url);
+		const hint = formatResumeHint({
+			sessionId: resumeSessionId,
+			sessionName: resumeSessionName,
+			source: resumeSource,
+			url,
+			query,
+			errorMessage,
+		});
+		notify?.(hint.message, 'error');
+
 		return {
 			content: [{ type: 'text', text: fallbackHeader + content }],
-			details: { ...fetchResult.details, processedAs: 'error', phase: 'error' },
+			details: {
+				...fetchResult.details,
+				processedAs: 'error',
+				phase: 'error',
+				subagentSessionId: hint.details.subagentSessionId,
+				subagentSessionName: hint.details.subagentSessionName,
+				resumeCommand: hint.details.resumeCommand,
+			},
 		};
 	}
 }
