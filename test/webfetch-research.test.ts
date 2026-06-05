@@ -257,6 +257,114 @@ describe('webfetchResearch - resume hint', () => {
 		);
 		expect(notify.mock.calls[0][0]).toContain('Re-run: pi-webfetch webfetch');
 	});
+
+	it('reuses the same subagent session id on the spawn and the resume hint (non-streaming path)', async () => {
+		// Regression guard: a constant-clock test would mask a bug where
+		// the catch block re-derives the id with a fresh `now()` and
+		// the user is pointed at a non-existent session.
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		const notify = vi.fn();
+		const result = await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			// Counter clock: each call returns a different value.
+			(() => {
+				let n = 0;
+				return () => ++n;
+			})(),
+			notify,
+			'extension',
+		);
+
+		// Success path: the id in the result matches the option passed
+		// to spawnPiAgent. (Sanity.)
+		expect(result.details.subagentSessionId).toBe(
+			spawnPiAgentMock.mock.calls[0][2]?.sessionId,
+		);
+	});
+
+	it('reuses the same subagent session id on the spawn and the resume hint (agent-error path, non-streaming)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockRejectedValue(new Error('boom'));
+
+		const notify = vi.fn();
+		const result = await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			(() => {
+				let n = 0;
+				return () => ++n;
+			})(),
+			notify,
+			'extension',
+		);
+
+		// The id surfaced on the details MUST be the same id the spawn
+		// was invoked with. Otherwise the resume command points at a
+		// non-existent session.
+		expect(result.details.subagentSessionId).toBe(
+			spawnPiAgentMock.mock.calls[0][2]?.sessionId,
+		);
+		// And the resume command is built from that same id.
+		expect(result.details.resumeCommand).toBe(
+			`pi --session ${result.details.subagentSessionId}`,
+		);
+	});
+
+	it('reuses the same subagent session id on the spawn and the resume hint (agent-error path, streaming)', async () => {
+		// Same regression guard for the streaming branch: the streaming
+		// path threads the sessionId through the spawn option too.
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockRejectedValue(new Error('boom'));
+
+		const streamingConfig = {
+			callback: vi.fn(),
+			url: 'https://example.com',
+			initialPhase: 'analyzing' as const,
+			streamingPhase: 'streaming' as const,
+		};
+
+		const notify = vi.fn();
+		const result = await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			streamingConfig,
+			undefined,
+			undefined,
+			(() => {
+				let n = 0;
+				return () => ++n;
+			})(),
+			notify,
+			'extension',
+		);
+
+		expect(result.details.subagentSessionId).toBe(
+			spawnPiAgentMock.mock.calls[0][2]?.sessionId,
+		);
+		expect(result.details.resumeCommand).toBe(
+			`pi --session ${result.details.subagentSessionId}`,
+		);
+	});
 });
 
 describe('webfetchResearch - other behavior', () => {

@@ -78,7 +78,11 @@ function yieldToEventLoop(): Promise<void> {
  * @param streamingConfig - Optional streaming configuration for real-time updates
  * @param provider - Optional provider override
  * @param options - Provider fetch options (e.g. GitHub-specific options)
- * @param now - Optional clock injection for the resume-hint session id
+ * @param now - Optional clock injection. The clock determines the
+ *                       deterministic subagent session id (derived from
+ *                       `now()`, url, query); the catch block reuses
+ *                       the same id so the resume command points at
+ *                       the actual spawned subagent.
  * @param notify - Optional callback fired once on the agent-error path
  * @param resumeSource - Which surface produced the error. Controls the
  *                       `resumeCommand` (extension → `pi --session <id>`,
@@ -161,6 +165,15 @@ export async function webfetchResearch(
 		return fetchResult;
 	}
 
+	// Promote the subagent to a real, named, persistent pi session so
+	// the user can `pi --session <id>` into the failed transcript.
+	// Derive these OUTSIDE the try block so the catch block can reuse
+	// the exact same ids - re-deriving with a fresh `now()` call would
+	// produce a different id and the user would be pointed at a
+	// non-existent session.
+	const sessionId = deriveSessionId(now(), url, query);
+	const sessionName = deriveSessionName(url);
+
 	try {
 		// Phase 3: Analyze content
 		if (config) {
@@ -176,11 +189,6 @@ export async function webfetchResearch(
 			`**Command:** /webfetch ${url} "${query}"\n`,
 			`\n---\n`,
 		].join('');
-
-		// Promote the subagent to a real, named, persistent pi session so
-		// the user can `pi --session <id>` into the failed transcript.
-		const sessionId = deriveSessionId(now(), url, query);
-		const sessionName = deriveSessionName(url);
 
 		// If we have streaming config, stream results directly to it
 		if (config) {
@@ -245,11 +253,13 @@ export async function webfetchResearch(
 			`\n---\n`,
 		].join('');
 
-		const resumeSessionId = deriveSessionId(now(), url, query);
-		const resumeSessionName = deriveSessionName(url);
+		// Reuse the SAME sessionId / sessionName the spawn call was
+		// invoked with, so the user can actually `pi --session <id>`
+		// the failed transcript. Re-deriving here with a fresh
+		// `now()` would silently break the resume feature.
 		const hint = formatResumeHint({
-			sessionId: resumeSessionId,
-			sessionName: resumeSessionName,
+			sessionId,
+			sessionName,
 			source: resumeSource,
 			url,
 			query,
