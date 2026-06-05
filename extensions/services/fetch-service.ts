@@ -93,8 +93,8 @@ export async function fetchUrl(
 
 	if (shouldUseProvider) {
 		try {
-			const config: ProviderConfig = {
-				forceProvider: provider || undefined,
+			const config: ProviderConfig & { provider?: string } = {
+				provider: provider || undefined,
 				github: options?.github,
 			};
 			const providerResult = await manager.fetch(url, config);

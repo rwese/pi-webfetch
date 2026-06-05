@@ -9,6 +9,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import { DefaultProvider, ClawfetchProvider, GhCliProvider, ProviderManager, createProviderManager } from "../src/providers";
+import type { WebfetchProvider } from "../src/providers/types";
 import { isLikelyBinaryUrl } from "../extensions/helpers";
 
 describe("Fetch Routing Logic", () => {
@@ -45,6 +46,46 @@ describe("Fetch Routing Logic", () => {
 				"https://github.com/user/repo/blob/main/README.md"
 			);
 			expect(provider).toBeDefined();
+		});
+
+		it("prefers gh-cli when only gh-cli detects an authenticated GitHub URL", async () => {
+			const genericProvider: WebfetchProvider = {
+				name: "default",
+				priority: 10,
+				capabilities: { supportsSPA: true },
+				isAvailable: () => true,
+				detectUrl: () => ({ isGitHub: false, isReddit: false, isLikelySPA: false, isLikelyBinary: false }),
+				fetch: async () => ({
+					content: "generic",
+					metadata: {},
+					finalUrl: "https://github.com/user/repo",
+					status: 200,
+					contentType: "text/html",
+					extractionMethod: "generic",
+					providerName: "default",
+				}),
+			};
+			const ghProvider: WebfetchProvider = {
+				name: "gh-cli",
+				priority: 8,
+				capabilities: { supportsGitHubFastPath: true },
+				isAvailable: () => true,
+				detectUrl: () => ({ isGitHub: true, isReddit: false, isLikelySPA: false, isLikelyBinary: false }),
+				fetch: async () => ({
+					content: "github",
+					metadata: {},
+					finalUrl: "https://github.com/user/repo",
+					status: 200,
+					contentType: "text/markdown",
+					extractionMethod: "gh-cli",
+					providerName: "gh-cli",
+				}),
+			};
+
+			const injectedManager = new ProviderManager({}, undefined, [genericProvider, ghProvider]);
+
+			await expect(injectedManager.selectProvider("https://github.com/user/repo"))
+				.resolves.toBe(ghProvider);
 		});
 	});
 

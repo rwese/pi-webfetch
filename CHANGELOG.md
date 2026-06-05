@@ -5,8 +5,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-06-05
+
 ### Added
 
+- MIT `LICENSE` file and `package.json` license metadata so published
+  tarballs include explicit license terms.
 - **Resumable research subagent.** Research mode now spawns the
   analysis subagent as a real, named, persistent pi session via
   `pi -p --name "<n>" --session-id "<id>" "<prompt>"`. The session
@@ -29,6 +33,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   extension surfaces it via `ctx.ui.notify`; the CLI writes it to
   stderr; the MCP server returns it under `_meta.details.notify` so
   an MCP client (e.g. Codex) can show it to the user.
+
+### Fixed
+
+- GitHub web URLs now route to the authenticated `gh-cli` provider even
+  when the higher-priority generic provider does not detect the GitHub
+  fast path.
+- CLI `webfetch <url>` without flags is covered as deterministic
+  plain-text output, and cache miss/stats CLI contracts are tested.
+- Wikipedia/MediaWiki extraction strips navboxes, print footers, and
+  category links from converted markdown.
 
 ### Changed
 

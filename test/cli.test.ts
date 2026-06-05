@@ -139,6 +139,30 @@ describe('runCli', () => {
 		expect(stdoutText()).toContain('| default | Available | 10 |');
 	});
 
+	it('reports a cache miss when clearing an uncached URL', async () => {
+		const deps = createDeps();
+		(deps.clearCache as ReturnType<typeof vi.fn>).mockResolvedValueOnce(false);
+		const { io, stdoutText } = createIo();
+
+		const exitCode = await runCli(['clear-cache', '--url', 'https://missing.example'], deps, io);
+
+		expect(exitCode).toBe(0);
+		expect(stdoutText()).toBe('No cache entry found for: https://missing.example\n');
+	});
+
+	it('prints cache stats after clearing all cached content', async () => {
+		const deps = createDeps();
+		(deps.getCacheStats as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ count: 0, totalSize: 0 });
+		const { io, stdoutText } = createIo();
+
+		expect(await runCli(['clear-cache'], deps, io)).toBe(0);
+		expect(await runCli(['cache-stats'], deps, io)).toBe(0);
+
+		expect(stdoutText()).toContain('Cleared 2 cached item(s)');
+		expect(stdoutText()).toContain('Cached items: 0');
+		expect(stdoutText()).toContain('Total size: 0.00 MB');
+	});
+
 	it('writes errors to stderr and exits non-zero', async () => {
 		const deps = createDeps();
 		const { io, stderrText } = createIo();
@@ -329,6 +353,18 @@ describe('compiled CLI', () => {
 		const result = JSON.parse(stdout);
 		expect(result.content[0].type).toBe('text');
 		expect(result.details.url).toBe('https://raw.githubusercontent.com/');
+	});
+
+	it('runs webfetch without flags as deterministic plain-text output', async () => {
+		const { stdout, stderr } = await execFileAsync(
+			'node',
+			['dist/extensions/cli.js', 'webfetch', 'https://raw.githubusercontent.com/'],
+			{ cwd: '/Users/wese/Repos/github.com/rwese/pi-webfetch' },
+		);
+
+		expect(stderr).toBe('');
+		expect(stdout.length).toBeGreaterThan(0);
+		expect(() => JSON.parse(stdout)).toThrow();
 	});
 
 	it('starts MCP mode without non-protocol stdout', async () => {

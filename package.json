@@ -2,6 +2,7 @@
 	"name": "@rwese/pi-webfetch",
 	"version": "0.7.0",
 	"description": "Webfetch extension for pi coding agent",
+	"license": "MIT",
 	"keywords": [
 		"pi-package",
 		"web",

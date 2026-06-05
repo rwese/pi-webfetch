@@ -209,6 +209,24 @@ describe('convertToMarkdown', () => {
 		const markdown = convertToMarkdown(html);
 		expect(markdown).not.toContain('[](#license)');
 	});
+
+	it('strips MediaWiki navboxes, print footers, and category links', () => {
+		const html = `
+			<main>
+				<h1>Playwright</h1>
+				<p>Playwright is a software testing framework.</p>
+				<div class="navbox">Microsoft development tools</div>
+				<div class="printfooter">Retrieved from Wikipedia</div>
+				<div id="catlinks">Categories: Free software</div>
+			</main>`;
+		const markdown = convertToMarkdown(html);
+
+		expect(markdown).toContain('# Playwright');
+		expect(markdown).toContain('software testing framework');
+		expect(markdown).not.toContain('Microsoft development tools');
+		expect(markdown).not.toContain('Retrieved from Wikipedia');
+		expect(markdown).not.toContain('Categories: Free software');
+	});
 });
 
 describe('removeMarkdownAnchors', () => {

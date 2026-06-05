@@ -40,7 +40,29 @@ export function extractTitle(html: string): string | undefined {
  */
 export function cleanHtml(html: string): string {
 	const $ = load(html);
-	$("script, style, nav, footer, header, aside, .header, .footer, .sidebar, .navbar").remove();
+	$(
+		[
+			"script",
+			"style",
+			"nav",
+			"footer",
+			"header",
+			"aside",
+			".header",
+			".footer",
+			".sidebar",
+			".navbar",
+			// MediaWiki/Wikipedia navigation and category chrome.
+			".navbox",
+			".vertical-navbox",
+			".metadata",
+			".catlinks",
+			".printfooter",
+			".mw-footer",
+			"#catlinks",
+			"#footer",
+		].join(", "),
+	).remove();
 	return $.html();
 }
 

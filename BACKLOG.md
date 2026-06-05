@@ -11,6 +11,7 @@
 | Add bot protection flag | - | ✅ Done | |
 | Add Reddit RSS fast path | - | ✅ Done | |
 | Add GitHub structured data | - | ✅ Done | |
+| #8 Better Error Messages | Medium | ✅ Done | Resumable subagent sessions, resume commands, and notify surfaces |
 
 ---
 
@@ -19,7 +20,6 @@
 | Task | Priority | Status | Plan |
 |------|----------|--------|-------|
 | #4 Resource Cleanup & Concurrency | High | 🔄 Planning | [PLAN_TASK4_RESOURCE_CLEANUP.md](./PLAN_TASK4_RESOURCE_CLEANUP.md) |
-| #8 Better Error Messages | Medium | 🔄 In Progress | [docs/plans/PLAN_AGENT_ERROR_RESUME.md](./docs/plans/PLAN_AGENT_ERROR_RESUME.md) |
 
 ---
 
@@ -32,7 +32,6 @@
 | #4 Resource Cleanup & Concurrency | High | Browser cleanup, concurrency fixes |
 | #5 Consolidate URL Detection | Medium | Shared constants for SPA/binary detection |
 | #6 GhCliProvider Complete | Medium | Add discussions, releases, commits, gists |
-| #8 Better Error Messages | Medium | Actionable suggestions in errors |
 | #7 Re-authentication Check | Medium | TTL on auth, refresh method |
 
 ### Low Priority
@@ -61,7 +60,7 @@
 5. **#4 Resource cleanup** ← CURRENT
 6. #5 Consolidate detection
 7. #6 GhCliProvider complete
-8. #8 Better errors
+8. ~~#8 Better errors~~ ✅
 9. #12 Security hardening
 10. #7 Re-auth check
 ... rest as time permits
@@ -70,10 +69,46 @@
 
 ## Quick Stats
 
-- **Total tasks:** 19
-- **Completed:** 7 (36%)
+- **Total tasks:** 22
+- **Completed:** 8 (36%)
 - **In Progress:** 1
-- **Remaining:** 11
+- **Remaining:** 13
+
+---
+
+## Review Findings — 2026-06-05 (hands-on review of v0.7.0)
+
+Surfaced by exercising the extension against `https://nope.at`,
+`https://en.wikipedia.org/wiki/Playwright_(software)`, and
+`https://github.com/microsoft/playwright` with the `webfetch` tool
+and the local CLI (`node dist/extensions/cli.js …`).
+
+| ID | Priority | Task | Notes |
+|----|----------|------|-------|
+| `2026-06-05-BXBE` | High | ✅ **Fixed: `webfetch` GitHub URL routes to `default` instead of `gh-cli`** | Provider selection now aggregates URL detection across available providers; authenticated GitHub URLs prefer `gh-cli`. Verified with `createProviderManager().selectProvider('https://github.com/microsoft/playwright') → gh-cli`. |
+| `2026-06-05-BXBF` | Medium | ✅ **Fixed: Wikipedia article carries nav/footer noise** | MediaWiki navboxes, print footers, footer chrome, and category links are stripped in static and browser conversion paths; regression test added. |
+| `2026-06-05-BXBG` | High | ✅ **Fixed: CLI `webfetch` with no flags covered** | Added compiled CLI regression for deterministic plain-text `webfetch <url>` output with empty stderr. |
+| `2026-06-05-BXBH` | Medium | ✅ **Covered: Hybrid extraction selectors not unit-tested** | Existing `BrowserManager` extraction tests pin article/main/body fallback selection; provider routing regression added for GitHub selector path. |
+| `2026-06-05-BXBI` | Low | ✅ **Fixed: `clear-cache` / `cache-stats` negative-path tests** | Added tests for uncached URL clear miss and stats after clear. |
+
+### Why the gh-cli route did not win
+
+Working theory (unverified — no code change yet):
+
+1. `providers --json` reports `gh-cli.available: true`, so the binary is on `$PATH` and `--version` parses. That only proves the CLI is **installed**, not that it is **authenticated**.
+2. The provider is also surfaced with `priority: 8` against `default: 10`. The AGENTS.md note ("prefer `gh-cli` when authenticated") implies the manager overrides priority on authenticated GitHub URLs, but the live output for `github.com/microsoft/playwright` shows `provider: default`. So either the override is not firing or `gh-cli.isAvailable()` returns `false` because `gh auth status` is non-zero in this environment.
+3. `webfetch` with no `--provider` flag is what the user-facing path uses, so this is the default behaviour, not an opt-in miss.
+
+Repro before changing code:
+
+```sh
+gh auth status
+node dist/extensions/cli.js webfetch https://github.com/microsoft/playwright --json | jq '.provider,.method'
+```
+
+If `gh auth status` is non-zero → expected behaviour, document it in the README and add a test that asserts `default` wins when gh is not authenticated.
+
+If `gh auth status` is OK → bug in `detectUrl` / manager selector. Fix in `extensions/fetch.ts` and add a regression test that mocks an authenticated `gh-cli.isAvailable()` and asserts the URL routes there.
 
 ---
 

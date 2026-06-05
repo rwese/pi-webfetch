@@ -43,20 +43,20 @@ Plan: [PLAN_AGENT_ERROR_RESUME.md](./docs/plans/PLAN_AGENT_ERROR_RESUME.md) (Age
 
 ## Step 6 — Polish
 
-- [ ] `npm run validate` green (typecheck + lint + tests).
+- [x] `npm run validate` green (typecheck + lint + tests).
 - [x] Update `CHANGELOG.md` with an "0.x.y — date" entry under "Added" + "Changed" describing: new `WebfetchDetails` fields, the persistent subagent session, the notify, the resume command, the deterministic unique-per-invocation id.
 - [x] Update `README.md`: one short paragraph on the resume flow (`pi --session <id>` from the same cwd, `pi -r` as a picker fallback, CLI/MCP re-run command).
 - [x] Update `AGENTS.md`: one-line architecture note update under "Architecture Notes" pointing at the new error-ux flow and the new `WebfetchDetails` fields.
-- [ ] `npm run build`.
-- [ ] `npm pack --dry-run` and verify `dist/`, `extensions/`, `src/`, `.mcp.json`, `.codex-plugin/`, `README.md`, `LICENSE` are present.
+- [x] `npm run build`.
+- [x] `npm pack --dry-run` and verify `dist/`, `extensions/`, `src/`, `.mcp.json`, `.codex-plugin/`, `README.md`, `LICENSE` are present.
 - [x] Small, scoped commits per step (one step per commit, conventional-commits subject).
 
 ## Definition of Done
 
 - [x] All step items complete.
-- [ ] `npm run validate` green.
+- [x] `npm run validate` green.
 - [ ] Manual verification: a real `/webfetch` call that triggers the agent-error path shows a TUI notify with `pi --session <id>` and the session name; the markdown fallback in the agent's context is byte-identical to the pre-change baseline.
 - [ ] Manual verification: `pi --session "<id>"` from the same cwd opens the failed subagent's transcript (URL, query, fetched content, partial analysis).
 - [ ] Manual verification: `pi-webfetch webfetch <url> --query <query>` from a shell that triggers the agent-error path prints one stderr line; exit code preserved.
 - [x] `CHANGELOG.md`, `README.md`, `AGENTS.md`, `BACKLOG.md` (#8 moved to In Progress), and `docs/prds/subagent-sandbox/README.md` (re-scope note) all updated.
-- [ ] No `TODO` / `FIXME` / debug code left behind.
+- [x] No `TODO` / `FIXME` / debug code left behind.

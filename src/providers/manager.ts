@@ -202,8 +202,16 @@ export class ProviderManager {
 			return null;
 		}
 
-		// For special URLs, prefer providers with specific support
-		const urlDetection = available[0].detectUrl(url);
+		// For special URLs, prefer providers with specific support. Detection is
+		// intentionally aggregated across providers because a high-priority generic
+		// provider may not know every host-specific fast path.
+		const detections = available.map((provider) => provider.detectUrl(url));
+		const urlDetection = {
+			isGitHub: detections.some((detection) => detection.isGitHub),
+			isReddit: detections.some((detection) => detection.isReddit),
+			isLikelySPA: detections.some((detection) => detection.isLikelySPA),
+			isLikelyBinary: detections.some((detection) => detection.isLikelyBinary),
+		};
 
 		// GitHub URLs: prefer gh-cli (authenticated, structured data)
 		if (urlDetection.isGitHub) {

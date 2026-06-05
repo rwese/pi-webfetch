@@ -29,6 +29,15 @@ const REMOVE_SELECTORS = [
 	'.AppHeader',
 	'.AppFooter',
 	'.repository-layout-sidebar',
+	// MediaWiki/Wikipedia navigation and category chrome
+	'.navbox',
+	'.vertical-navbox',
+	'.metadata',
+	'.catlinks',
+	'.printfooter',
+	'.mw-footer',
+	'#catlinks',
+	'#footer',
 	// Social/interactive elements
 	'.social-share',
 	'.share-buttons',
