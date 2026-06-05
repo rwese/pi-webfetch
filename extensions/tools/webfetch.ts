@@ -136,7 +136,7 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 			return text;
 		},
 
-		async execute(_toolCallId, params, _signal, onUpdate, _ctx) {
+		async execute(_toolCallId, params, _signal, onUpdate, ctx) {
 			// Phase 1: Starting - send initial update
 			onUpdate?.({
 				content: [{ type: 'text', text: '' }],
@@ -167,6 +167,14 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 				params.includeComments !== undefined
 					? { github: { includeComments: params.includeComments } }
 					: undefined,
+				() => Date.now(),
+				// Resume hint notify: surface the resume command in the TUI
+				// status bar instead of the agent's context. One shot per
+				// failure, fired from the research service's catch block.
+				(message) => {
+					ctx?.ui?.notify(message, 'error');
+				},
+				'extension',
 			);
 
 			return result;

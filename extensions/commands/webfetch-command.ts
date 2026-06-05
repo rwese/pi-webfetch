@@ -107,6 +107,17 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 					(status, phase) => {
 						ctx.ui.setStatus('webfetch', phase ? getCommandPhaseLabel(phase, !!query) : status);
 					},
+					undefined,
+					undefined,
+					undefined,
+					() => Date.now(),
+					// Resume hint notify: surface the resume command in the TUI
+					// status bar instead of the agent's context. One shot per
+					// failure, fired from the research service's catch block.
+					(message) => {
+						ctx.ui.notify(message, 'error');
+					},
+					'extension',
 				);
 				const text = result.content[0]?.text || 'No content';
 
