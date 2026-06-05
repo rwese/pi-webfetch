@@ -282,6 +282,61 @@ describe('spawnPiAgent', () => {
 
 		expect(vi.mocked(spawn)).toHaveBeenCalled();
 	});
+
+	it('passes --session-id and --name when both are provided', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', {
+			sessionId: 'abc123def4567890',
+			sessionName: 'webfetch-research: example.com',
+		});
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		const idIndex = args.indexOf('--session-id');
+		expect(idIndex).toBeGreaterThanOrEqual(0);
+		expect(args[idIndex + 1]).toBe('abc123def4567890');
+
+		const nameIndex = args.indexOf('--name');
+		expect(nameIndex).toBeGreaterThanOrEqual(0);
+		expect(args[nameIndex + 1]).toBe('webfetch-research: example.com');
+	});
+
+	it('omits --session-id and --name when not provided (back-compat)', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query');
+
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+
+		expect(args).not.toContain('--session-id');
+		expect(args).not.toContain('--name');
+	});
+
+	it('echoes sessionId and sessionName back on the result', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		const result = await spawnPiAgent('Content', 'Query', {
+			sessionId: 'persistent-id',
+			sessionName: 'webfetch-research: example.com',
+		});
+
+		expect(result.sessionId).toBe('persistent-id');
+		expect(result.sessionName).toBe('webfetch-research: example.com');
+		expect(result.analysis).toBe('Result');
+		expect(result.exitCode).toBe(0);
+	});
 });
 
 describe('isPiAvailable', () => {

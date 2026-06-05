@@ -25,6 +25,19 @@ export interface SpawnPiAgentOptions {
 	extensions?: string[];
 	/** Explicitly disable extensions (default: false) */
 	noExtensions?: boolean;
+	/**
+	 * Persistent session id to assign to the spawned subagent. When set, the
+	 * subagent is launched with `--session-id <id>` so its transcript is
+	 * resumable via `pi --session <id>`. Optional for back-compat with
+	 * callers that don't need a resumable subagent.
+	 */
+	sessionId?: string;
+	/**
+	 * Human-readable session name passed to the subagent as `--name <name>`.
+	 * Surfaced in `pi -r` pickers. Optional; only added when `sessionId` is
+	 * also set.
+	 */
+	sessionName?: string;
 }
 
 /** Default skills for research queries */
@@ -49,6 +62,17 @@ export interface SpawnPiAgentResult {
 	analysis: string;
 	/** Exit code of the pi process */
 	exitCode: number;
+	/**
+	 * Persistent session id of the spawned subagent. Echoed back so callers
+	 * can surface a resume hint to the user. `undefined` when the caller did
+	 * not request a resumable session.
+	 */
+	sessionId?: string;
+	/**
+	 * Human-readable session name of the spawned subagent. Echoed back so
+	 * callers can surface it in resume hints.
+	 */
+	sessionName?: string;
 }
 
 /**
@@ -176,6 +200,8 @@ export async function spawnPiAgent(
 		skills = DEFAULT_RESEARCH_SKILLS,
 		extensions,
 		noExtensions = false,
+		sessionId,
+		sessionName,
 	} = options;
 
 	// Dynamic import for better testability
@@ -209,6 +235,17 @@ export async function spawnPiAgent(
 		// Disable extensions discovery unless we have explicit extensions
 		if (noExtensions && !extensions?.length) {
 			args.push('--no-extensions');
+		}
+
+		// Promote the subagent to a real, named, persistent pi session so
+		// the user can `pi --session <id>` it after a failure. The plan
+		// (`docs/plans/PLAN_AGENT_ERROR_RESUME.md`) is what makes these
+		// resumable subagents part of the failure-ux contract.
+		if (sessionId) {
+			args.push('--session-id', sessionId);
+			if (sessionName) {
+				args.push('--name', sessionName);
+			}
 		}
 
 		// Enable useful tools (use allowlist for focused toolset)
@@ -255,6 +292,8 @@ export async function spawnPiAgent(
 				resolve({
 					analysis: stdout.trim(),
 					exitCode: code ?? 0,
+					sessionId,
+					sessionName,
 				});
 			} else {
 				reject(new PiAgentError(stderr || `pi exited with code ${code}`, code, stderr));
