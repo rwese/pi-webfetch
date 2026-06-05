@@ -48,6 +48,14 @@ export interface WebfetchDetails {
 	 * echoed back.
 	 */
 	resumeCommand?: string;
+	/**
+	 * Surface-specific notification message produced on the agent-error
+	 * path. The extension consumes it via `ctx.ui.notify`; the CLI
+	 * writes it to stderr; the MCP server returns it under
+	 * `_meta.details.notify` so an MCP client (e.g. Codex) can surface
+	 * it to the user.
+	 */
+	notify?: string;
 }
 
 /**

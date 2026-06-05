@@ -74,6 +74,9 @@ export function registerWebfetchMcpTools(
 					undefined,
 					undefined,
 					includeComments !== undefined ? { github: { includeComments } } : undefined,
+					() => Date.now(),
+					undefined,
+					'mcp',
 				),
 			),
 	);

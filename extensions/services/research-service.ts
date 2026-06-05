@@ -266,6 +266,7 @@ export async function webfetchResearch(
 				subagentSessionId: hint.details.subagentSessionId,
 				subagentSessionName: hint.details.subagentSessionName,
 				resumeCommand: hint.details.resumeCommand,
+				notify: hint.message,
 			},
 		};
 	}

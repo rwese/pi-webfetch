@@ -67,6 +67,9 @@ describe('createWebfetchMcpServer', () => {
 			undefined,
 			undefined,
 			undefined,
+			expect.any(Function),
+			undefined,
+			'mcp',
 		);
 		expect(result.content[0]).toEqual({ type: 'text', text: 'fetched https://example.com' });
 		expect(result.structuredContent).toEqual({
@@ -105,6 +108,9 @@ describe('createWebfetchMcpServer', () => {
 			undefined,
 			undefined,
 			{ github: { includeComments: true } },
+			expect.any(Function),
+			undefined,
+			'mcp',
 		);
 	});
 
@@ -127,6 +133,51 @@ describe('createWebfetchMcpServer', () => {
 			undefined,
 			undefined,
 			{ github: { includeComments: false } },
+			expect.any(Function),
+			undefined,
+			'mcp',
 		);
+	});
+
+	it('surfaces the resume hint fields in _meta.details on the agent-error path', async () => {
+		const deps = createDeps();
+		(deps.webfetchResearch as ReturnType<typeof vi.fn>).mockResolvedValue({
+			content: [
+				{ type: 'text' as const, text: '## Fetch Result (Agent Error)\n\nbody' },
+			],
+			details: {
+				url: 'https://example.com',
+				contentType: 'text/html',
+				status: 200,
+				processedAs: 'error' as const,
+				phase: 'error' as const,
+				subagentSessionId: '0123456789abcdef',
+				subagentSessionName: 'webfetch-research: example.com',
+				resumeCommand: "pi-webfetch webfetch 'https://example.com' --query 'q'",
+				notify: 'Research subagent failed.\nRe-run: pi-webfetch webfetch ...',
+			},
+		});
+
+		const server = createWebfetchMcpServer(deps);
+		const result = await getRegisteredTools(server).webfetch.handler(
+			{ url: 'https://example.com', query: 'q' },
+			{} as never,
+		);
+
+		expect(result.isError).toBe(true);
+		const meta = result._meta?.details as Record<string, unknown> | undefined;
+		expect(meta?.subagentSessionId).toBe('0123456789abcdef');
+		expect(meta?.subagentSessionName).toBe('webfetch-research: example.com');
+		expect(meta?.resumeCommand).toBe(
+			"pi-webfetch webfetch 'https://example.com' --query 'q'",
+		);
+		expect(meta?.notify).toContain('Research subagent failed.');
+		// structuredContent shape is preserved (zod stability)
+		expect(result.structuredContent).toEqual({
+			url: 'https://example.com',
+			contentType: 'text/html',
+			status: 200,
+			processedAs: 'error',
+		});
 	});
 });
