@@ -108,6 +108,9 @@ describe('runCli', () => {
 			undefined,
 			'gh-cli',
 			undefined,
+			expect.any(Function),
+			expect.any(Function),
+			'cli',
 		);
 		expect(JSON.parse(stdoutText())).toEqual({
 			content: [{ type: 'text', text: 'fetched https://example.com' }],
@@ -164,6 +167,9 @@ describe('runCli', () => {
 			undefined,
 			undefined,
 			{ github: { includeComments: true } },
+			expect.any(Function),
+			expect.any(Function),
+			'cli',
 		);
 	});
 
@@ -186,6 +192,9 @@ describe('runCli', () => {
 			undefined,
 			undefined,
 			{ github: { includeComments: false } },
+			expect.any(Function),
+			expect.any(Function),
+			'cli',
 		);
 	});
 
@@ -196,6 +205,72 @@ describe('runCli', () => {
 
 		const lastCall = (deps.webfetchResearch as ReturnType<typeof vi.fn>).mock.calls.at(-1);
 		expect(lastCall?.[6]).toBeUndefined();
+	});
+
+	it('writes the resume hint to stderr on the agent-error path', async () => {
+		const deps = createDeps();
+		// Replace the webfetchResearch mock so it returns an error fallback
+		// (the same shape webfetchResearch produces on the agent-error
+		// branch) and invokes the notify shim synchronously.
+		(deps.webfetchResearch as ReturnType<typeof vi.fn>).mockImplementation(
+			async (
+				_url: string,
+				_query: string | undefined,
+				_fetch?: typeof fetch,
+				_status?: unknown,
+				_streaming?: unknown,
+				_provider?: string,
+				_options?: unknown,
+				_now?: () => number,
+				notify?: (message: string, level: 'info' | 'warn' | 'error') => void,
+				_source?: string,
+			) => {
+				notify?.(
+					[
+						'Research subagent failed.',
+						'Subagent session: 0123456789abcdef',
+						"Re-run: pi-webfetch webfetch 'https://example.com' --query 'q'",
+						'Reason: boom',
+					].join('\n'),
+					'error',
+				);
+				return {
+					content: [
+						{
+							type: 'text' as const,
+							text: "## Fetch Result (Agent Error)\n**Command:** /webfetch https://example.com \"q\"\n**Agent Error:** boom\n\n---\n\nbody",
+						},
+					],
+					details: {
+						url: 'https://example.com',
+						contentType: 'text/html',
+						status: 200,
+						processedAs: 'error' as const,
+						phase: 'error' as const,
+						subagentSessionId: '0123456789abcdef',
+						subagentSessionName: 'webfetch-research: example.com',
+						resumeCommand: "pi-webfetch webfetch 'https://example.com' --query 'q'",
+					},
+				};
+			},
+		);
+
+		const { io, stderrText, stdoutText } = createIo();
+		const exitCode = await runCli(
+			['webfetch', 'https://example.com', '--query', 'q'],
+			deps,
+			io,
+		);
+
+		expect(exitCode).toBe(0);
+		const stderr = stderrText();
+		expect(stderr).toContain('Research subagent failed.');
+		expect(stderr).toContain('Subagent session: 0123456789abcdef');
+		expect(stderr).toContain('Re-run: pi-webfetch webfetch');
+		expect(stderr).toContain('Reason: boom');
+		// Fallback markdown is still on stdout
+		expect(stdoutText()).toContain('## Fetch Result (Agent Error)');
+		expect(stdoutText()).toContain('boom');
 	});
 
 	it('rejects invalid --include-comments values', async () => {

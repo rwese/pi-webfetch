@@ -232,6 +232,14 @@ export async function runCli(
 				undefined,
 				parseProvider(parsed.flags.provider),
 				includeComments !== undefined ? { github: { includeComments } } : undefined,
+				// CLI: stable per-process clock; stable multi-line stderr
+				// message on the agent-error path. The session id is still
+				// unique-per-invocation because it includes the timestamp.
+				() => Date.now(),
+				(message) => {
+					writeError(io, message);
+				},
+				'cli',
 			);
 			writeFetchResult(io, result, wantsJson(parsed));
 			return 0;
