@@ -30,13 +30,13 @@ Plan: [PLAN_PI_JSONRPC.md](./docs/plans/PLAN_PI_JSONRPC.md) (Switch the research
 
 ## Step 2 — Refactor `spawnPiAgent` to use the wrapper
 
-- [ ] Replace the print-mode `spawn` in `extensions/pi-agent.ts` with a call to `pi-rpc-client`. Drop the `-p` argv building, the stdout drain, the print-mode `PiAgentError` paths entirely. No fallback branch, no parallel transport.
-- [ ] Add optional `onToolCall?: (event: { phase: 'reading' | 'executing' | 'thinking'; name: string; args: any }) => void` to `SpawnPiAgentOptions`. **Default: no-op** (back-compat with existing callers).
-- [ ] `onChunk` now fires for every (debounced) `message_update` `text_delta` event from the subagent. Concatenation equals `result.analysis` (byte-equal).
-- [ ] `SpawnPiAgentResult.sessionId` / `.sessionName` are the values returned by `getState()` on the live subagent, not just the pre-computed id.
-- [ ] `timeout` knob unchanged: rejects with `PiAgentError('Pi agent timed out after Xms', null)` if no `agent_end` in time. The wrapper owns the timer; no upstream 30s per-command limit.
-- [ ] Fix the `resolveSkillPaths` `includes` bug: use a real `fs.existsSync` check; drop non-existent skill dirs (with a debug-level log in tests).
-- [ ] Rewrite `test/pi-agent.test.ts` (~7 cases per the plan):
+- [x] Replace the print-mode `spawn` in `extensions/pi-agent.ts` with a call to `pi-rpc-client`. Drop the `-p` argv building, the stdout drain, the print-mode `PiAgentError` paths entirely. No fallback branch, no parallel transport.
+- [x] Add optional `onToolCall?: (event: { phase: 'reading' | 'executing' | 'thinking'; name: string; args: any }) => void` to `SpawnPiAgentOptions`. **Default: no-op** (back-compat with existing callers).
+- [x] `onChunk` now fires for every (debounced) `message_update` `text_delta` event from the subagent. Concatenation equals `result.analysis` (byte-equal).
+- [x] `SpawnPiAgentResult.sessionId` / `.sessionName` are the values returned by `getState()` on the live subagent, not just the pre-computed id.
+- [x] `timeout` knob unchanged: rejects with `PiAgentError('Pi agent timed out after Xms', null)` if no `agent_end` in time. The wrapper owns the timer; no upstream 30s per-command limit.
+- [x] Fix the `resolveSkillPaths` `includes` bug: use a real `fs.existsSync` check; drop non-existent skill dirs (with a debug-level log in tests).
+- [x] Rewrite `test/pi-agent.test.ts` (~7 cases per the plan):
   1. `onChunk` is called for every (debounced) `text_delta` event; concatenation equals the full text from `getLastAssistantText()`.
   2. `onToolCall` is called for `read` with `{ phase: 'reading', name: 'read', args: { path: '...' } }`.
   3. `onToolCall` is called for `bash` with `{ phase: 'executing', name: 'bash', args: { command: '...' } }`.
@@ -44,8 +44,8 @@ Plan: [PLAN_PI_JSONRPC.md](./docs/plans/PLAN_PI_JSONRPC.md) (Switch the research
   5. The argv contains `--mode rpc` (and never `-p`).
   6. The `--name` / `--session-id` / `--tools` / `--skill` argv-shape tests (transport-agnostic) are preserved verbatim.
   7. `resolveSkillPaths` only includes existing skill directories on disk; non-existent path is dropped silently.
-- [ ] Delete tests that assert on stdout chunks or `-p` argv — they no longer model real behavior.
-- [ ] Verify: `npm test -- --run test/pi-agent.test.ts` green.
+- [x] Delete tests that assert on stdout chunks or `-p` argv — they no longer model real behavior.
+- [x] Verify: `npm test -- --run test/pi-agent.test.ts` green.
 
 ## Step 3 — Thread `onToolCall` through `webfetchResearch`
 

@@ -26,10 +26,44 @@
  */
 
 import type { Readable, Writable } from 'node:stream';
-import type { ChildProcess } from 'node:child_process';
-import { spawn as nodeSpawn } from 'node:child_process';
+import type { ChildProcess, SpawnOptions } from 'node:child_process';
+import { createRequire } from 'node:module';
 import { StringDecoder } from 'node:string_decoder';
 import { PiAgentError } from './pi-agent.js';
+
+/** Type alias for `node:child_process.spawn` to keep top-of-file
+ *  type imports consistent. The real `spawn` is a union of
+ *  overloads; we type the wrapper's `spawn` option as a permissive
+ *  signature that accepts any of the real overloads. */
+export type NodeSpawn = ((
+	command: string,
+	args?: readonly string[] | undefined,
+	options?: SpawnOptions,
+) => ChildProcess) & {
+	(command: string, options?: SpawnOptions): ChildProcess;
+};
+
+/**
+ * Lazy default `spawn` factory. We resolve the real
+ * `node:child_process.spawn` at call time (not at module-load time)
+ * so that test-time `vi.mock('node:child_process', ...)` correctly
+ * applies to the wrapper's default spawn. Capturing the binding at
+ * import time would freeze the import before the mock is applied.
+ */
+const require = createRequire(import.meta.url);
+const childProcessModule = require('node:child_process') as { spawn: NodeSpawn };
+/**
+ * The default `spawn` factory reads the current `spawn` from
+ * `node:child_process` at call time. This is what allows test
+ * harnesses (vitest's `vi.mock('node:child_process', ...)`) to
+ * replace `spawn` after this module has loaded.
+ *
+ * The cast through `unknown` is required because the real
+ * `spawn` exposes a union of overloads that a single function
+ * signature cannot satisfy.
+ */
+const defaultSpawn = ((...args: unknown[]) =>
+	(childProcessModule.spawn as (...a: unknown[]) => ChildProcess)(...args)) as unknown as NodeSpawn;
 
 /** Phase mapping for tool events. */
 export type ToolPhase = 'reading' | 'executing' | 'thinking';
@@ -60,7 +94,7 @@ export interface PiRpcClientOptions {
 	 * Override the spawn function. Used by tests to inject a fake
 	 * child process that mimics `pi --mode rpc` over stdin / stdout.
 	 */
-	spawn?: typeof nodeSpawn;
+	spawn?: NodeSpawn;
 }
 
 export interface PiRpcRunOptions {
@@ -103,7 +137,7 @@ type AgentEndListener = (event: Record<string, unknown>) => void;
 export class PiRpcClient {
 	private readonly options: Required<Omit<PiRpcClientOptions, 'spawn' | 'env'>> & {
 		env: Record<string, string>;
-		spawn: typeof nodeSpawn;
+		spawn: NodeSpawn;
 	};
 	private proc: ChildProcess | null = null;
 	private pending: PendingCommand | null = null;
@@ -122,7 +156,7 @@ export class PiRpcClient {
 			env: options.env ?? {},
 			args: options.args ?? [],
 			autoDismissUiRequests: options.autoDismissUiRequests ?? true,
-			spawn: options.spawn ?? nodeSpawn,
+			spawn: options.spawn ?? defaultSpawn,
 		};
 	}
 

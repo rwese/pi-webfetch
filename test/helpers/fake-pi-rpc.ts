@@ -20,7 +20,6 @@
 
 import { EventEmitter } from 'node:events';
 import { Readable, Writable } from 'node:stream';
-import { spawn as nodeSpawn } from 'node:child_process';
 import { PiRpcClient, type PiRpcToolEvent } from '../../extensions/pi-rpc-client.js';
 
 export interface FakePiRpcConfig {
@@ -77,8 +76,8 @@ function createFakeChild(): FakeChildProcess & EventEmitter {
  * overloads of the real spawn are too narrow for a single
  * factory signature to satisfy directly).
  */
-function makeSpawnFactory(child: FakeChildProcess & EventEmitter): typeof nodeSpawn {
-	return ((..._args: unknown[]) => child) as unknown as typeof nodeSpawn;
+function makeSpawnFactory(child: FakeChildProcess & EventEmitter) {
+	return ((..._args: unknown[]) => child) as never;
 }
 
 /**
@@ -124,8 +123,8 @@ export function createFakePiRpcWithSpawnCapture(
 		args: [],
 		spawn: ((command: string, args: string[]) => {
 			spawnCalls.push({ command, args: [...args] });
-			return child as unknown as ReturnType<typeof nodeSpawn>;
-		}) as unknown as typeof nodeSpawn,
+			return child as never;
+		}) as never,
 	});
 	return { client, driver, spawnCalls };
 }

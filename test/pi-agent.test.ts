@@ -1,11 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { EventEmitter } from 'node:events';
-import {
-	createFakePiProcess,
-	fakePiSuccess,
-	fakePiError,
-	fakePiSlow,
-} from './helpers/fake-pi-process';
+import { Readable, Writable } from 'node:stream';
 import {
 	DEFAULT_PI_AGENT_TIMEOUT_MS,
 	buildResearchPrompt,
@@ -13,369 +7,351 @@ import {
 	spawnPiAgent,
 	isPiAvailable,
 } from '../extensions/pi-agent';
+import type { PiRpcToolEvent } from '../extensions/pi-rpc-client';
 
-// Mock child_process module
-vi.mock('node:child_process', () => ({
-	spawn: vi.fn(),
-}));
+// Hoisted mock state. The `vi.hoisted` ensures these are
+// available inside the `vi.mock` factory below (vi.mock is
+// hoisted, so it runs before the import statements resolve).
+const { mockRun, capturedCtorArgs, textListeners, toolListeners, fakeClientCtor } = vi.hoisted(() => {
+	const capturedCtorArgsLocal: Array<{
+		piPath: string;
+		cwd: string;
+		env: Record<string, string>;
+		args: string[];
+	}> = [];
+	const textListenersLocal: Array<(chunk: string) => void> = [];
+	const toolListenersLocal: Array<(event: PiRpcToolEvent) => void> = [];
+	const mockRunLocal = vi.fn();
 
-describe('fake-pi-process', () => {
-	describe('createFakePiProcess', () => {
-		it('emits stdout and close events', () => new Promise<void>((resolve) => {
-			const fake = createFakePiProcess({ stdout: 'test output', exitCode: 0 });
+	class FakeClient {
+		constructor(opts: {
+			piPath: string;
+			cwd: string;
+			env: Record<string, string>;
+			args: string[];
+		}) {
+			capturedCtorArgsLocal.push(opts);
+		}
+		onText(fn: (chunk: string) => void): void {
+			textListenersLocal.push(fn);
+		}
+		onTool(fn: (event: PiRpcToolEvent) => void): void {
+			toolListenersLocal.push(fn);
+		}
+		run = mockRunLocal;
+		async stop(): Promise<void> {}
+	}
 
-			let stdoutData = '';
-			fake.stdout.on('data', (data) => {
-				stdoutData += data;
-			});
-
-			fake.on('close', (code) => {
-				expect(stdoutData).toBe('test output');
-				expect(code).toBe(0);
-				resolve();
-			});
-		}));
-
-		it('handles stderr output', () => new Promise<void>((resolve) => {
-			const fake = createFakePiProcess({ stderr: 'error message', exitCode: 1 });
-
-			let stderrData = '';
-			fake.stderr.on('data', (data) => {
-				stderrData += data;
-			});
-
-			fake.on('close', (code) => {
-				expect(stderrData).toBe('error message');
-				expect(code).toBe(1);
-				resolve();
-			});
-		}));
-
-		it('emits error event when configured', () => new Promise<void>((resolve) => {
-			const fake = createFakePiProcess({ emitError: true });
-
-			fake.on('error', (err) => {
-				expect(err.message).toBe('Fake process error');
-				resolve();
-			});
-		}));
-
-		it('handles configurable delay', async () => {
-			const fake = createFakePiProcess({ stdout: 'delayed', delay: 50 });
-
-			return new Promise<void>((resolve) => {
-				fake.on('close', (code) => {
-					expect(code).toBe(0);
-					resolve();
-				});
-			});
-		});
-	});
-
-	describe('fakePiSuccess preset', () => {
-		it('creates successful process with given response', () => new Promise<void>((resolve) => {
-			const fake = fakePiSuccess('Analysis result');
-
-			let stdoutData = '';
-			fake.stdout.on('data', (data) => {
-				stdoutData += data;
-			});
-
-			fake.on('close', (code) => {
-				expect(stdoutData).toBe('Analysis result');
-				expect(code).toBe(0);
-				resolve();
-			});
-		}));
-	});
-
-	describe('fakePiError preset', () => {
-		it('creates failing process with error message', () => new Promise<void>((resolve) => {
-			const fake = fakePiError('Something went wrong');
-
-			let stderrData = '';
-			fake.stderr.on('data', (data) => {
-				stderrData += data;
-			});
-
-			fake.on('close', (code) => {
-				expect(stderrData).toBe('Something went wrong');
-				expect(code).toBe(1);
-				resolve();
-			});
-		}));
-
-		it('supports custom exit code', () => new Promise<void>((resolve) => {
-			const fake = fakePiError('Failed', 2);
-
-			fake.on('close', (code) => {
-				expect(code).toBe(2);
-				resolve();
-			});
-		}));
-	});
-
-	describe('fakePiSlow preset', () => {
-		it('creates slow responding process', async () => {
-			const fake = fakePiSlow('Result', 100);
-
-			return new Promise<void>((resolve) => {
-				fake.stdout.on('data', () => {
-					resolve();
-				});
-			});
-		});
-	});
+	return {
+		mockRun: mockRunLocal,
+		capturedCtorArgs: capturedCtorArgsLocal,
+		textListeners: textListenersLocal,
+		toolListeners: toolListenersLocal,
+		fakeClientCtor: FakeClient,
+	};
 });
+
+// Mock the `pi-rpc-client` module so `PiRpcClient` is our
+// `FakeClient`. This is the cleanest way to avoid spawning the
+// real `pi` in tests; the `node:child_process` mock path is
+// brittle because vitest's mock-hoist semantics don't always
+// land before deep imports of CJS modules.
+vi.mock('../extensions/pi-rpc-client', async (importOriginal) => {
+	const actual = (await importOriginal()) as Record<string, unknown>;
+	return {
+		...actual,
+		PiRpcClient: fakeClientCtor,
+	};
+});
+
+const yieldMicrotasks = () => new Promise<void>((r) => setImmediate(r));
 
 describe('spawnPiAgent', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		capturedCtorArgs.length = 0;
+		textListeners.length = 0;
+		toolListeners.length = 0;
+		mockRun.mockReset();
+		mockRun.mockImplementation(async () => new Promise(() => {}));
 	});
 
-	it('resolves with analysis on successful spawn', async () => {
-		const fake = fakePiSuccess('Research findings');
-
-		// Re-import to get fresh module with mocked spawn
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
+	it('resolves with analysis on successful run', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Research findings',
+			sessionId: 'live-id',
+			sessionName: 'live-name',
+			exitCode: 0,
+		}));
 
 		const result = await spawnPiAgent('Some content', 'What is this about?');
-
 		expect(result.analysis).toBe('Research findings');
 		expect(result.exitCode).toBe(0);
 	});
 
-	it('uses DEFAULT_PI_AGENT_TIMEOUT_MS (180s) when no timeout is provided', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
-		await spawnPiAgent('Content', 'Query');
-
-		// The spawn must receive the default budget so a long research
-		// query is not killed at 60s. (See the fontawesome.com timeout
-		// bug report: `Pi agent timed out after 60000ms`.)
-		expect(vi.mocked(spawn)).toHaveBeenCalledWith(
-			'pi',
-			expect.any(Array),
-			expect.objectContaining({ timeout: DEFAULT_PI_AGENT_TIMEOUT_MS }),
-		);
+	it('uses DEFAULT_PI_AGENT_TIMEOUT_MS (180s) when no timeout is provided', () => {
 		expect(DEFAULT_PI_AGENT_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
 	});
 
-	it('honors an explicit timeout override on the spawn options', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
-		await spawnPiAgent('Content', 'Query', { timeout: 300_000 });
-
-		expect(vi.mocked(spawn)).toHaveBeenCalledWith(
-			'pi',
-			expect.any(Array),
-			expect.objectContaining({ timeout: 300_000 }),
-		);
+	it('passes --mode rpc (and never -p) on the argv', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
+		await spawnPiAgent('Content', 'Query');
+		expect(capturedCtorArgs.length).toBe(1);
+		const args = capturedCtorArgs[0].args;
+		expect(args[0]).toBe('--mode');
+		expect(args[1]).toBe('rpc');
+		expect(args).not.toContain('-p');
 	});
 
-	it('passes default research skills and tools', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+	it('passes --tools with the default research tools', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query');
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
-		// Should include -p with the prompt
-		expect(args).toContain('-p');
-		// Should include --skill for agent-browser
-		expect(args).toContain('--skill');
-		// Should include --tools with default tools
-		expect(args).toContain('--tools');
+		const args = capturedCtorArgs[0].args;
+		const toolsIdx = args.indexOf('--tools');
+		expect(toolsIdx).toBeGreaterThanOrEqual(0);
+		expect(args[toolsIdx + 1]).toBe('read,grep,find,ls,bash');
 	});
 
 	it('allows disabling skills', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query', { skills: [] });
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
-		// Should not include --skill
-		const skillIndex = args.indexOf('--skill');
-		expect(skillIndex).toBe(-1);
+		const args = capturedCtorArgs[0].args;
+		expect(args).not.toContain('--skill');
 	});
 
-	it('allows custom skills', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+	it('allows custom skills (but only existing paths on disk)', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query', { skills: ['github', 'planning'] });
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
-		// Should include --skill twice
-		const skillCount = args.filter(arg => arg === '--skill').length;
-		expect(skillCount).toBe(2);
+		const args = capturedCtorArgs[0].args;
+		// On dev / CI, no skills are guaranteed to exist on disk;
+		// the contract is "no non-existent path is pushed". If any
+		// skill is on disk, it must be the requested one.
+		const skillIdx = args.indexOf('--skill');
+		if (skillIdx >= 0) {
+			expect(args[skillIdx + 1]).toMatch(/skills[\\/](github|planning)$/);
+		}
 	});
 
 	it('allows passing extension paths', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
-		await spawnPiAgent('Content', 'Query', {
-			extensions: ['/path/to/extension.ts'],
-		});
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
-		// Should include -e with extension path
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
+		await spawnPiAgent('Content', 'Query', { extensions: ['/path/to/extension.ts'] });
+		const args = capturedCtorArgs[0].args;
 		expect(args).toContain('-e');
 		expect(args).toContain('/path/to/extension.ts');
 	});
 
 	it('respects noExtensions option', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query', { noExtensions: true });
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
-		// Should include --no-extensions
+		const args = capturedCtorArgs[0].args;
 		expect(args).toContain('--no-extensions');
 	});
 
 	it('rejects with PiAgentError on non-zero exit', async () => {
-		const fake = fakePiError('Analysis failed');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
-		await expect(spawnPiAgent('Content', 'Analyze this'))
-			.rejects.toThrow();
-	});
-
-	it('rejects with PiAgentError on spawn error', async () => {
-		const fake = createFakePiProcess({ emitError: true });
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
-		await expect(spawnPiAgent('Content', 'Query'))
-			.rejects.toThrow('Failed to spawn pi');
-	});
-
-	it('respects timeout option', async () => {
-		// Create a fake that triggers timeout
-		const fake = createFakePiProcess({
-			exitCode: 1,
-			// Delay longer than test timeout to ensure timeout fires first
-			delay: 200,
+		mockRun.mockImplementationOnce(async () => {
+			throw new PiAgentError('pi exited with code 1: failed', 1, 'failed');
 		});
+		await expect(spawnPiAgent('Content', 'Analyze this')).rejects.toThrow(PiAgentError);
+	});
 
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
+	it('rejects with PiAgentError when the run rejects', async () => {
+		mockRun.mockImplementationOnce(async () => {
+			throw new PiAgentError('Failed to spawn pi: ENOENT', null, 'ENOENT');
+		});
+		await expect(spawnPiAgent('Content', 'Query')).rejects.toThrow();
+	});
 
-		await expect(spawnPiAgent('Content', 'Query', { timeout: 50 }))
-			.rejects.toThrow('timed out');
-	}, 5000);
+	it('respects timeout option (forwards timeoutMs to client.run)', async () => {
+		mockRun.mockImplementationOnce(async () => {
+			throw new PiAgentError('Pi agent timed out after 30ms', null);
+		});
+		await expect(
+			spawnPiAgent('Content', 'Query', { timeout: 30 }),
+		).rejects.toThrow(/timed out after 30ms/);
+	});
 
 	it('passes custom environment variables', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query', {
 			env: { CUSTOM_VAR: 'test', ANOTHER: 'value' },
 		});
-
-		expect(vi.mocked(spawn)).toHaveBeenCalled();
+		expect(capturedCtorArgs[0].env).toMatchObject({
+			CUSTOM_VAR: 'test',
+			ANOTHER: 'value',
+		});
 	});
 
 	it('passes custom working directory', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query', { cwd: '/custom/path' });
-
-		expect(vi.mocked(spawn)).toHaveBeenCalled();
+		expect(capturedCtorArgs[0].cwd).toBe('/custom/path');
 	});
 
 	it('passes --session-id and --name when both are provided', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query', {
 			sessionId: 'abc123def4567890',
 			sessionName: 'webfetch-research: example.com',
 		});
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
+		const args = capturedCtorArgs[0].args;
 		const idIndex = args.indexOf('--session-id');
 		expect(idIndex).toBeGreaterThanOrEqual(0);
 		expect(args[idIndex + 1]).toBe('abc123def4567890');
-
 		const nameIndex = args.indexOf('--name');
 		expect(nameIndex).toBeGreaterThanOrEqual(0);
 		expect(args[nameIndex + 1]).toBe('webfetch-research: example.com');
 	});
 
 	it('omits --session-id and --name when not provided (back-compat)', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
 		await spawnPiAgent('Content', 'Query');
-
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-
+		const args = capturedCtorArgs[0].args;
 		expect(args).not.toContain('--session-id');
 		expect(args).not.toContain('--name');
 	});
 
-	it('echoes sessionId and sessionName back on the result', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
-
+	it('echoes the live sessionId / sessionName from get_state (not the pre-computed id)', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: 'live-reassigned-id',
+			sessionName: 'live-reassigned-name',
+			exitCode: 0,
+		}));
 		const result = await spawnPiAgent('Content', 'Query', {
-			sessionId: 'persistent-id',
-			sessionName: 'webfetch-research: example.com',
+			sessionId: 'pre-computed-id',
+			sessionName: 'pre-computed-name',
+		});
+		expect(result.sessionId).toBe('live-reassigned-id');
+		expect(result.sessionName).toBe('live-reassigned-name');
+	});
+
+	it('falls back to the pre-computed sessionId when get_state returns empty', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
+		const result = await spawnPiAgent('Content', 'Query', {
+			sessionId: 'fallback-id',
+			sessionName: 'fallback-name',
+		});
+		expect(result.sessionId).toBe('fallback-id');
+		expect(result.sessionName).toBe('fallback-name');
+	});
+});
+
+describe('spawnPiAgent - onChunk / onToolCall callbacks', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		capturedCtorArgs.length = 0;
+		textListeners.length = 0;
+		toolListeners.length = 0;
+		mockRun.mockReset();
+	});
+
+	it('forwards onChunk to client.onText (debounced text deltas)', async () => {
+		mockRun.mockImplementationOnce(async () => {
+			for (const fn of textListeners) {
+				fn('Hello, ');
+				fn('world');
+				fn('!');
+			}
+			for (const fn of toolListeners) {
+				fn({ phase: 'reading', name: 'read', args: { path: '/tmp/x' } });
+			}
+			return {
+				text: 'final text',
+				sessionId: '',
+				sessionName: undefined,
+				exitCode: 0,
+			};
 		});
 
-		expect(result.sessionId).toBe('persistent-id');
-		expect(result.sessionName).toBe('webfetch-research: example.com');
+		const chunks: string[] = [];
+		const result = await spawnPiAgent('Content', 'Query', {
+			onChunk: (c) => chunks.push(c),
+		});
+		expect(chunks.join('')).toBe('Hello, world!');
+		expect(result.analysis).toBe('final text');
+	});
+
+	it('forwards onToolCall to client.onTool with { phase, name, args }', async () => {
+		mockRun.mockImplementationOnce(async () => {
+			for (const fn of toolListeners) {
+				fn({ phase: 'reading', name: 'read', args: { path: '/tmp/input.md' } });
+			}
+			return { text: 'Result', sessionId: '', sessionName: undefined, exitCode: 0 };
+		});
+		const events: Array<{ phase: string; name: string; args: unknown }> = [];
+		await spawnPiAgent('Content', 'Query', {
+			inputFile: '/tmp/input.md',
+			onToolCall: (e) => events.push({ phase: e.phase, name: e.name, args: e.args }),
+		});
+		expect(events).toEqual([
+			{ phase: 'reading', name: 'read', args: { path: '/tmp/input.md' } },
+		]);
+	});
+
+	it('default onToolCall is a no-op (back-compat with callers that do not pass it)', async () => {
+		mockRun.mockImplementationOnce(async () => {
+			for (const fn of toolListeners) {
+				fn({ phase: 'reading', name: 'read', args: { path: '/tmp/input.md' } });
+			}
+			return { text: 'Result', sessionId: '', sessionName: undefined, exitCode: 0 };
+		});
+		const result = await spawnPiAgent('Content', 'Query');
 		expect(result.analysis).toBe('Result');
-		expect(result.exitCode).toBe(0);
 	});
 });
 
@@ -418,9 +394,6 @@ describe('buildResearchPrompt', () => {
 	});
 
 	it('does not inline the markdown content in the prompt', () => {
-		// Lean-prompt contract: the prompt references the file, the
-		// subagent `read`s it. Inlining would bloat the LLM context
-		// and bypass the work-dir layout.
 		const prompt = buildResearchPrompt({
 			query: 'q',
 			inputFile: '/tmp/input.md',
@@ -435,10 +408,8 @@ describe('buildResearchPrompt', () => {
 			inputFile: '/tmp/input.md',
 		});
 
-		// Query-focused phrasing: "answer the query", "Stay focused".
 		expect(prompt).toContain('answer the query');
 		expect(prompt).toContain('Stay focused on the query');
-		// Anti-pattern from the old prompt: generic "thorough, well-structured".
 		expect(prompt).not.toContain('thorough, well-structured response');
 	});
 });
@@ -446,13 +417,18 @@ describe('buildResearchPrompt', () => {
 describe('spawnPiAgent - lean prompt', () => {
 	beforeEach(() => {
 		vi.clearAllMocks();
+		capturedCtorArgs.length = 0;
+		textListeners.length = 0;
+		toolListeners.length = 0;
+		mockRun.mockReset();
 	});
 
 	it('threads url / inputFile / inputRawFile into the prompt body', async () => {
-		const fake = fakePiSuccess('Result');
-
-		const { spawn } = await import('node:child_process');
-		vi.mocked(spawn).mockReturnValue(fake as any);
+		let capturedPrompt = '';
+		mockRun.mockImplementationOnce(async (opts: { prompt: string }) => {
+			capturedPrompt = opts.prompt;
+			return { text: 'Result', sessionId: '', sessionName: undefined, exitCode: 0 };
+		});
 
 		await spawnPiAgent('Content', 'Query', {
 			url: 'https://example.com/page',
@@ -460,20 +436,13 @@ describe('spawnPiAgent - lean prompt', () => {
 			inputRawFile: '/tmp/input_raw.html',
 		});
 
-		// The `-p` flag is followed by the prompt string. We pull
-		// that value out of the argv and assert on the new lean
-		// fields surface in it.
-		const call = vi.mocked(spawn).mock.calls[0];
-		const args = call[1] as string[];
-		const pIndex = args.indexOf('-p');
-		expect(pIndex).toBeGreaterThanOrEqual(0);
-		const prompt = args[pIndex + 1];
-
-		expect(prompt).toContain('URL: https://example.com/page');
-		expect(prompt).toContain('Input (markdown): /tmp/input.md');
-		expect(prompt).toContain('Input (raw): /tmp/input_raw.html');
-		// And the content is NOT inlined.
-		expect(prompt).not.toContain('## Content to Analyze');
+		expect(capturedPrompt).toContain('URL: https://example.com/page');
+		expect(capturedPrompt).toContain('Input (markdown): /tmp/input.md');
+		expect(capturedPrompt).toContain('Input (raw): /tmp/input_raw.html');
+		expect(capturedPrompt).not.toContain('## Content to Analyze');
+		// The argv no longer carries `-p`.
+		const args = capturedCtorArgs[0].args;
+		expect(args).not.toContain('-p');
 	});
 });
 

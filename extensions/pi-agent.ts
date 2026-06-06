@@ -3,12 +3,19 @@
  *
  * Spawns a pi sub-agent to analyze fetched content based on a query.
  * The subprocess gets access to relevant skills and tools for smarter analysis.
+ *
+ * The transport is JSON-RPC over stdio (see `extensions/pi-rpc-client.ts`).
+ * The previous print-mode `-p <prompt>` spawn is gone; the subagent is
+ * driven as a real, named, persistent pi session that streams text
+ * deltas and tool events back to the parent so the parent can render
+ * live progress (see `docs/plans/PLAN_PI_JSONRPC.md`).
  */
 
-import type { ChildProcess } from 'node:child_process';
-import { cwd, env } from 'node:process';
+import { existsSync } from 'node:fs';
+import { cwd } from 'node:process';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
+import { PiRpcClient, type PiRpcToolEvent } from './pi-rpc-client.js';
 
 export interface SpawnPiAgentOptions {
 	/**
@@ -26,6 +33,15 @@ export interface SpawnPiAgentOptions {
 	env?: Record<string, string>;
 	/** Callback for streaming output chunks (for live UI updates) */
 	onChunk?: (chunk: string) => void;
+	/**
+	 * Callback for tool events from the subagent. Fires on
+	 * `tool_execution_start` with a parent-friendly phase
+	 * (`'reading'` for `read` / `grep` / `find` / `ls`,
+	 * `'executing'` for `bash`, `'thinking'` for everything
+	 * else). **Default: no-op** (back-compat with existing
+	 * callers).
+	 */
+	onToolCall?: (event: PiRpcToolEvent) => void;
 	/** Additional skills to load for the research agent */
 	skills?: string[];
 	/** Additional extension paths to load */
@@ -108,14 +124,16 @@ export interface SpawnPiAgentResult {
 	/** Exit code of the pi process */
 	exitCode: number;
 	/**
-	 * Persistent session id of the spawned subagent. Echoed back so callers
-	 * can surface a resume hint to the user. `undefined` when the caller did
+	 * Persistent session id of the spawned subagent. Sourced from
+	 * the live `get_state` response on the JSON-RPC transport, not
+	 * from the pre-computed id; if the subagent reassigned the
+	 * id, the live value wins. `undefined` when the caller did
 	 * not request a resumable session.
 	 */
 	sessionId?: string;
 	/**
-	 * Human-readable session name of the spawned subagent. Echoed back so
-	 * callers can surface it in resume hints.
+	 * Human-readable session name of the spawned subagent. Sourced
+	 * from the live `get_state` response.
 	 */
 	sessionName?: string;
 }
@@ -143,8 +161,12 @@ function findPiExecutable(): string {
 }
 
 /**
- * Resolve skill paths from skill names
- * Checks common skill directories for the skill
+ * Resolve skill paths from skill names.
+ *
+ * For each skill name, search common skill directories
+ * (`~/.pi/agent/skills`, `~/.agents/skills`, `<cwd>/.pi/skills`) and
+ * return the first existing path. Non-existent skill dirs are
+ * silently dropped (a debug-level log is emitted in test envs).
  */
 function resolveSkillPaths(skillNames: string[]): string[] {
 	const skillDirs = [
@@ -155,17 +177,24 @@ function resolveSkillPaths(skillNames: string[]): string[] {
 
 	const paths: string[] = [];
 	for (const skill of skillNames) {
+		let resolved = false;
 		for (const dir of skillDirs) {
 			const skillPath = resolve(dir, skill);
-			// Check if it exists (could be a symlink or directory)
 			try {
-				// Just check if it resolves to something
-				if (skillPath.includes(skill)) {
+				if (existsSync(skillPath)) {
 					paths.push(skillPath);
+					resolved = true;
 					break;
 				}
 			} catch {
-				// Path doesn't exist, continue
+				// Permission denied / race; treat as not found.
+			}
+		}
+		if (!resolved) {
+			// Best-effort: surface a debug hint without throwing.
+			// The wrapper does not need a missing skill to be fatal.
+			if (process.env['PI_WEBFETCH_DEBUG_SKILLS'] === '1') {
+				console.error(`[pi-webfetch] skill not found: ${skill}`);
 			}
 		}
 	}
@@ -262,9 +291,77 @@ Write your final answer below this line. Stay focused on the query.
 }
 
 /**
+ * Build the argv for the `pi` subprocess.
+ *
+ * The argv shape is transport-agnostic. The first two args are
+ * `--mode rpc` (so `pi` starts in JSON-RPC mode); the rest are
+ * the session / skill / tool flags shared with the previous
+ * print-mode spawn.
+ */
+function buildArgv(
+	piPath: string,
+	options: {
+		skills: string[];
+		extensions?: string[];
+		noExtensions: boolean;
+		sessionId?: string;
+		sessionName?: string;
+	},
+): string[] {
+	const args: string[] = ['--mode', 'rpc'];
+
+	// Add skills (only existing paths on disk; `resolveSkillPaths`
+	// already filters out non-existent skill directories).
+	const skillPaths = resolveSkillPaths(options.skills);
+	for (const path of skillPaths) {
+		args.push('--skill', path);
+	}
+
+	// Add explicit extension paths
+	if (options.extensions) {
+		for (const ext of options.extensions) {
+			args.push('-e', ext);
+		}
+	}
+
+	// Disable extensions discovery unless we have explicit extensions
+	if (options.noExtensions && !options.extensions?.length) {
+		args.push('--no-extensions');
+	}
+
+	// Promote the subagent to a real, named, persistent pi session so
+	// the user can `pi --session <id>` it after a failure. The plan
+	// (`docs/plans/PLAN_AGENT_ERROR_RESUME.md`) is what makes these
+	// resumable subagents part of the failure-ux contract.
+	if (options.sessionId) {
+		args.push('--session-id', options.sessionId);
+		if (options.sessionName) {
+			args.push('--name', options.sessionName);
+		}
+	}
+
+	// Enable useful tools (use allowlist for focused toolset)
+	args.push('--tools', DEFAULT_RESEARCH_TOOLS.join(','));
+
+	// Touch the unused-parameter so eslint doesn't complain about the
+	// the `piPath` arg. We return `args`; the wrapper handles the
+	// `pi` binary via its `piPath` option.
+	void piPath;
+
+	return args;
+}
+
+/**
  * Spawn a pi sub-agent to analyze content based on a query
  *
- * @param content - The fetched content to analyze
+ * The transport is JSON-RPC over stdio via {@link PiRpcClient}.
+ * Text deltas and tool events are streamed to the optional
+ * `onChunk` / `onToolCall` callbacks for live UI updates.
+ *
+ * @param _content - The fetched content to analyze. Accepted for
+ *   back-compat with the previous signature; NOT inlined in the
+ *   prompt (the lean path references the file paths via
+ *   `inputFile` / `inputRawFile`).
  * @param query - The research question or analysis request
  * @param options - Optional configuration
  * @returns The analysis result from the sub-agent
@@ -280,7 +377,7 @@ Write your final answer below this line. Stay focused on the query.
  * ```
  */
 export async function spawnPiAgent(
-	content: string,
+	_content: string,
 	query: string,
 	options: SpawnPiAgentOptions = {},
 ): Promise<SpawnPiAgentResult> {
@@ -289,142 +386,68 @@ export async function spawnPiAgent(
 		cwd: cwdOption = cwd(),
 		env: envOption = {},
 		onChunk,
+		onToolCall,
 		skills = DEFAULT_RESEARCH_SKILLS,
 		extensions,
 		noExtensions = false,
 		sessionId,
 		sessionName,
-		// Inputs for the lean prompt. `url`, `inputFile`, `inputRawFile`
-		// are surfaced in the prompt so the subagent can `read` /
-		// `grep` the content on demand instead of receiving it inline.
-		// `content` is accepted for back-compat with the previous
-		// signature but is NOT inlined in the prompt when the new
-		// fields are present; the prompt references the file paths.
 		url,
 		inputFile,
 		inputRawFile,
 	} = options;
 
-	// Dynamic import for better testability
-	const { spawn } = await import('node:child_process');
-
-	return new Promise((resolve, reject) => {
-		const piPath = findPiExecutable();
-
-		// Build args array
-		const args: string[] = [];
-
-		// Build the research prompt. The prompt is lean: it surfaces
-		// URL, cwd, session name, and the file paths to the input
-		// files. The subagent `read`s the content on demand, so the
-		// LLM context stays small and the prompt is stable across
-		// very different page sizes.
-		const prompt = buildResearchPrompt({
-			query,
-			url,
-			cwd: cwdOption,
-			sessionId,
-			sessionName,
-			inputFile,
-			inputRawFile,
-		});
-		args.push('-p', prompt);
-		// `content` is intentionally unused in the prompt body when
-		// `inputFile` is provided (the new lean path). We still
-		// accept the argument so older call sites that pass
-		// `(content, query)` keep compiling; the unused-variable
-		// eslint rule is satisfied by the explicit `void` below.
-		void content;
-
-		// Add skills
-		if (skills.length > 0) {
-			const skillPaths = resolveSkillPaths(skills);
-			for (const path of skillPaths) {
-				args.push('--skill', path);
-			}
-		}
-
-		// Add explicit extension paths
-		if (extensions) {
-			for (const ext of extensions) {
-				args.push('-e', ext);
-			}
-		}
-
-		// Disable extensions discovery unless we have explicit extensions
-		if (noExtensions && !extensions?.length) {
-			args.push('--no-extensions');
-		}
-
-		// Promote the subagent to a real, named, persistent pi session so
-		// the user can `pi --session <id>` it after a failure. The plan
-		// (`docs/plans/PLAN_AGENT_ERROR_RESUME.md`) is what makes these
-		// resumable subagents part of the failure-ux contract.
-		if (sessionId) {
-			args.push('--session-id', sessionId);
-			if (sessionName) {
-				args.push('--name', sessionName);
-			}
-		}
-
-		// Enable useful tools (use allowlist for focused toolset)
-		args.push('--tools', DEFAULT_RESEARCH_TOOLS.join(','));
-
-		const proc: ChildProcess = spawn(
-			piPath,
-			args,
-			{
-				stdio: ['ignore', 'pipe', 'pipe'],
-				cwd: cwdOption,
-				env: { ...env, ...envOption },
-				timeout,
-			},
-		);
-
-		let stdout = '';
-		let stderr = '';
-
-		// Set up timeout
-		const timeoutHandle = setTimeout(() => {
-			proc.kill('SIGTERM');
-			reject(new PiAgentError(`Pi agent timed out after ${timeout}ms`, null));
-		}, timeout);
-
-		// Collect stdout - this is the analysis result
-		// Stream chunks if callback provided for live UI updates
-		proc.stdout?.on('data', (data: Buffer) => {
-			const chunk = data.toString();
-			stdout += chunk;
-			onChunk?.(chunk);
-		});
-
-		// Collect stderr for error reporting
-		proc.stderr?.on('data', (data: Buffer) => {
-			stderr += data.toString();
-		});
-
-		// Handle process completion
-		proc.on('close', (code) => {
-			clearTimeout(timeoutHandle);
-
-			if (code === 0) {
-				resolve({
-					analysis: stdout.trim(),
-					exitCode: code ?? 0,
-					sessionId,
-					sessionName,
-				});
-			} else {
-				reject(new PiAgentError(stderr || `pi exited with code ${code}`, code, stderr));
-			}
-		});
-
-		// Handle spawn errors
-		proc.on('error', (err) => {
-			clearTimeout(timeoutHandle);
-			reject(new PiAgentError(`Failed to spawn pi: ${err.message}`, null, err.message));
-		});
+	const piPath = findPiExecutable();
+	const args = buildArgv(piPath, {
+		skills,
+		extensions,
+		noExtensions,
+		sessionId,
+		sessionName,
 	});
+
+	// Build the lean research prompt. The content is NOT inlined;
+	// the prompt references `inputFile` / `inputRawFile` and the
+	// subagent `read`s them on demand.
+	const prompt = buildResearchPrompt({
+		query,
+		url,
+		cwd: cwdOption,
+		sessionId,
+		sessionName,
+		inputFile,
+		inputRawFile,
+	});
+
+	const client = new PiRpcClient({
+		piPath,
+		cwd: cwdOption,
+		env: envOption,
+		args,
+	});
+
+	if (onChunk) client.onText(onChunk);
+	if (onToolCall) client.onTool(onToolCall);
+
+	try {
+		const result = await client.run({ prompt, timeoutMs: timeout });
+		return {
+			analysis: result.text.trim(),
+			exitCode: result.exitCode,
+			// Prefer the live sessionId from `get_state`; fall back
+			// to the pre-computed id if the subagent didn't report
+			// one (e.g. the subagent exited before `get_state`
+			// resolved — the wrapper would have rejected in that
+			// case, so this is a defensive default).
+			sessionId: result.sessionId || sessionId,
+			sessionName: result.sessionName || sessionName,
+		};
+	} catch (err) {
+		// Best-effort cleanup on failure. The wrapper's `stop()`
+		// is a no-op when the process is already gone.
+		await client.stop().catch(() => {});
+		throw err;
+	}
 }
 
 /**

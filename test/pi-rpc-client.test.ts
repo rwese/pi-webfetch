@@ -32,8 +32,8 @@ describe('PiRpcClient', () => {
 				],
 				spawn: ((command: string, args: string[]) => {
 					spawnCalls.push({ command, args: [...args] });
-					return child as unknown as ReturnType<typeof import('node:child_process').spawn>;
-				}) as unknown as typeof import('node:child_process').spawn,
+					return child as never;
+				}) as never,
 			});
 
 			const runPromise = fullClient.run({ prompt: 'hello' });
@@ -195,7 +195,7 @@ describe('PiRpcClient', () => {
 				args: [],
 				autoDismissUiRequests: false,
 				spawn: ((_command: string, _args: string[], _options: object) =>
-					child) as unknown as typeof import('node:child_process').spawn,
+					child) as never,
 			});
 
 			const runPromise = clientNoAuto.run({ prompt: 'hi' });
