@@ -71,7 +71,7 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Provider abstraction: `WebfetchProvider` with `name`, `priority`, `capabilities`, `isAvailable`, `detectUrl`, and `fetch`.
 - Provider priority: `default` 10, `gh-cli` 8, `clawfetch` 5. GitHub URLs prefer `gh-cli` when authenticated.
 - Markdown post-processing removes auto anchors, extracts embedded images to temp files, and preserves code blocks/tables.
-- Research mode fetches content, spawns a pi subprocess for analysis, and falls back to fetched content if analysis fails.
+- Research mode fetches content, spawns a pi subprocess for analysis, and falls back to fetched content if analysis fails. The spawn default budget is `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`, 180000ms = 3 min); the CLI / MCP / pi tool each expose a `timeout` knob to override per call.
 - Binary content is downloaded to temp files and not analyzed.
 - Agent-error resume flow: research mode spawns the subagent as a real, named, persistent pi session (`--session-id <id>` / `--name <name>`) so the user can `pi --session <id>` into the failed transcript. On the agent-error path, the in-content fallback stays byte-identical to the pre-change baseline; the resume hint lives in `WebfetchDetails.subagentSessionId` / `subagentSessionName` / `resumeCommand` and a side-channel `notify` (TUI notify on the extension, stderr on the CLI, `_meta.details.notify` on the MCP). See `docs/plans/PLAN_AGENT_ERROR_RESUME.md` for the full design.
 

@@ -11,7 +11,14 @@ import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 
 export interface SpawnPiAgentOptions {
-	/** Maximum time to wait for response in ms (default: 60000) */
+	/**
+	 * Maximum time to wait for response in ms. The default
+	 * (see {@link DEFAULT_PI_AGENT_TIMEOUT_MS}) is sized for
+	 * non-trivial research queries on large pages. Callers that
+	 * want a different budget can pass a positive integer in
+	 * milliseconds; the CLI / MCP / pi tool surfaces each expose
+	 * a `timeout` knob for this.
+	 */
 	timeout?: number;
 	/** Working directory for pi process */
 	cwd?: string;
@@ -39,6 +46,20 @@ export interface SpawnPiAgentOptions {
 	 */
 	sessionName?: string;
 }
+
+/**
+ * Default wall-clock budget for the research subagent in milliseconds.
+ *
+ * The previous 60s default was too tight for non-trivial research
+ * queries against large pages (e.g. fontawesome.com docs) and
+ * surfaced as `Pi agent timed out after 60000ms` even when the
+ * subagent was making progress. 180s covers typical research
+ * queries on large pages while still bounding the worst case.
+ * Override per-call via `SpawnPiAgentOptions.timeout` or via the
+ * `--timeout` flag (CLI) / `timeout` field (MCP / tool).
+ */
+// fallow-ignore-next-line unused-exports
+export const DEFAULT_PI_AGENT_TIMEOUT_MS = 180_000;
 
 /** Default skills for research queries */
 // fallow-ignore-next-line unused-exports
@@ -193,7 +214,7 @@ export async function spawnPiAgent(
 	options: SpawnPiAgentOptions = {},
 ): Promise<SpawnPiAgentResult> {
 	const {
-		timeout = 60000,
+		timeout = DEFAULT_PI_AGENT_TIMEOUT_MS,
 		cwd: cwdOption = cwd(),
 		env: envOption = {},
 		onChunk,

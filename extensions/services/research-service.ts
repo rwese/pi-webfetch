@@ -87,6 +87,10 @@ function yieldToEventLoop(): Promise<void> {
  * @param resumeSource - Which surface produced the error. Controls the
  *                       `resumeCommand` (extension → `pi --session <id>`,
  *                       CLI / MCP → `pi-webfetch webfetch <url> --query <q>`).
+ * @param timeout - Optional per-call override (ms) for the spawned
+ *                       research subagent. Falls back to the spawn
+ *                       default (`DEFAULT_PI_AGENT_TIMEOUT_MS` in
+ *                       `extensions/pi-agent.ts`, currently 180000).
  * @returns FetchResult with analysis or error content
  *
  * @example
@@ -109,6 +113,7 @@ export async function webfetchResearch(
 	now: () => number = () => Date.now(),
 	notify?: ResearchNotify,
 	resumeSource: ResumeSource = 'extension',
+	timeout?: number,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
@@ -206,6 +211,7 @@ export async function webfetchResearch(
 				},
 				sessionId,
 				sessionName,
+				...(timeout !== undefined ? { timeout } : {}),
 			});
 
 			const researchDetails: WebfetchDetails = {
@@ -227,6 +233,7 @@ export async function webfetchResearch(
 		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
 			sessionId,
 			sessionName,
+			...(timeout !== undefined ? { timeout } : {}),
 		});
 
 		const researchDetails: WebfetchDetails = {

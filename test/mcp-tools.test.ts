@@ -70,6 +70,7 @@ describe('createWebfetchMcpServer', () => {
 			expect.any(Function),
 			undefined,
 			'mcp',
+			undefined,
 		);
 		expect(result.content[0]).toEqual({ type: 'text', text: 'fetched https://example.com' });
 		expect(result.structuredContent).toEqual({
@@ -111,6 +112,7 @@ describe('createWebfetchMcpServer', () => {
 			expect.any(Function),
 			undefined,
 			'mcp',
+			undefined,
 		);
 	});
 
@@ -136,7 +138,42 @@ describe('createWebfetchMcpServer', () => {
 			expect.any(Function),
 			undefined,
 			'mcp',
+			undefined,
 		);
+	});
+
+	it('forwards an explicit timeout to webfetchResearch', async () => {
+		const deps = createDeps();
+		const server = createWebfetchMcpServer(deps);
+		await getRegisteredTools(server).webfetch.handler(
+			{
+				url: 'https://example.com',
+				query: 'q',
+				timeout: 300000,
+			},
+			{} as never,
+		);
+
+		expect(deps.webfetchResearch).toHaveBeenCalledWith(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			expect.any(Function),
+			undefined,
+			'mcp',
+			300000,
+		);
+	});
+
+	it('exposes timeout in the zod input schema', () => {
+		const server = createWebfetchMcpServer(createDeps());
+		const tools = getRegisteredTools(server);
+
+		expect(getSchemaShape(tools.webfetch)).toHaveProperty('timeout');
 	});
 
 	it('surfaces the resume hint fields in _meta.details on the agent-error path', async () => {

@@ -111,6 +111,7 @@ describe('runCli', () => {
 			expect.any(Function),
 			expect.any(Function),
 			'cli',
+			180000,
 		);
 		expect(JSON.parse(stdoutText())).toEqual({
 			content: [{ type: 'text', text: 'fetched https://example.com' }],
@@ -194,6 +195,7 @@ describe('runCli', () => {
 			expect.any(Function),
 			expect.any(Function),
 			'cli',
+			180000,
 		);
 	});
 
@@ -219,6 +221,7 @@ describe('runCli', () => {
 			expect.any(Function),
 			expect.any(Function),
 			'cli',
+			180000,
 		);
 	});
 
@@ -309,6 +312,60 @@ describe('runCli', () => {
 		expect(exitCode).toBe(1);
 		expect(stderrText()).toContain("Invalid boolean 'maybe'");
 	});
+
+	it('forwards --timeout <ms> to webfetchResearch', async () => {
+		const deps = createDeps();
+		const { io, stderrText } = createIo();
+		const exitCode = await runCli(
+			['webfetch', 'https://example.com', '--query', 'q', '--timeout', '300000'],
+			deps,
+			io,
+		);
+
+		expect(exitCode).toBe(0);
+		expect(stderrText()).toBe('');
+		expect(deps.webfetchResearch).toHaveBeenCalledWith(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			expect.any(Function),
+			expect.any(Function),
+			'cli',
+			300000,
+		);
+	});
+
+	it('rejects non-positive --timeout values', async () => {
+		const deps = createDeps();
+		const { io, stderrText } = createIo();
+
+		expect(
+			await runCli(
+				['webfetch', 'https://example.com', '--timeout', '0'],
+				deps,
+				io,
+			),
+		).toBe(1);
+		expect(
+			await runCli(
+				['webfetch', 'https://example.com', '--timeout', '-5'],
+				deps,
+				io,
+			),
+		).toBe(1);
+		expect(
+			await runCli(
+				['webfetch', 'https://example.com', '--timeout', 'abc'],
+				deps,
+				io,
+			),
+		).toBe(1);
+		expect(stderrText()).toContain('Invalid timeout');
+	});
 });
 
 describe('compiled CLI', () => {
@@ -328,6 +385,7 @@ describe('compiled CLI', () => {
 		expect(stderr).toBe('');
 		expect(stdout).toContain('pi-webfetch webfetch <url>');
 		expect(stdout).toContain('--include-comments');
+		expect(stdout).toContain('--timeout');
 		expect(stdout).toContain('pi-webfetch mcp');
 	});
 

@@ -6,7 +6,12 @@ import {
 	fakePiError,
 	fakePiSlow,
 } from './helpers/fake-pi-process';
-import { PiAgentError, spawnPiAgent, isPiAvailable } from '../extensions/pi-agent';
+import {
+	DEFAULT_PI_AGENT_TIMEOUT_MS,
+	PiAgentError,
+	spawnPiAgent,
+	isPiAvailable,
+} from '../extensions/pi-agent';
 
 // Mock child_process module
 vi.mock('node:child_process', () => ({
@@ -138,6 +143,40 @@ describe('spawnPiAgent', () => {
 
 		expect(result.analysis).toBe('Research findings');
 		expect(result.exitCode).toBe(0);
+	});
+
+	it('uses DEFAULT_PI_AGENT_TIMEOUT_MS (180s) when no timeout is provided', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query');
+
+		// The spawn must receive the default budget so a long research
+		// query is not killed at 60s. (See the fontawesome.com timeout
+		// bug report: `Pi agent timed out after 60000ms`.)
+		expect(vi.mocked(spawn)).toHaveBeenCalledWith(
+			'pi',
+			expect.any(Array),
+			expect.objectContaining({ timeout: DEFAULT_PI_AGENT_TIMEOUT_MS }),
+		);
+		expect(DEFAULT_PI_AGENT_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
+	});
+
+	it('honors an explicit timeout override on the spawn options', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', { timeout: 300_000 });
+
+		expect(vi.mocked(spawn)).toHaveBeenCalledWith(
+			'pi',
+			expect.any(Array),
+			expect.objectContaining({ timeout: 300_000 }),
+		);
 	});
 
 	it('passes default research skills and tools', async () => {

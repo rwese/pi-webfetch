@@ -365,6 +365,98 @@ describe('webfetchResearch - resume hint', () => {
 			`pi --session ${result.details.subagentSessionId}`,
 		);
 	});
+
+	it('forwards an explicit timeout to spawnPiAgent (non-streaming)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+			300_000,
+		);
+
+		expect(spawnPiAgentMock).toHaveBeenCalledTimes(1);
+		const opts = spawnPiAgentMock.mock.calls[0][2];
+		expect(opts?.timeout).toBe(300_000);
+	});
+
+	it('forwards an explicit timeout to spawnPiAgent (streaming)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		const streamingConfig = {
+			callback: vi.fn(),
+			url: 'https://example.com',
+			initialPhase: 'analyzing' as const,
+			streamingPhase: 'streaming' as const,
+		};
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			streamingConfig,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+			300_000,
+		);
+
+		const opts = spawnPiAgentMock.mock.calls[0][2];
+		expect(opts?.timeout).toBe(300_000);
+	});
+
+	it('omits the timeout option when not provided, so spawnPiAgent uses its default', async () => {
+		// Regression guard: the user-facing 60s timeout bug was triggered
+		// by the spawn default being too low. Today the spawn default is
+		// 180s; callers that don't pass a timeout must let the spawn
+		// layer apply its own default, not webfetchResearch.
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+		);
+
+		const opts = spawnPiAgentMock.mock.calls[0][2];
+		expect(opts?.timeout).toBeUndefined();
+	});
 });
 
 describe('webfetchResearch - other behavior', () => {

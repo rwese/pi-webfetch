@@ -5,6 +5,44 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-06-06
+
+### Fixed
+
+- **Research subagent timeout bumped from 60s to 180s.** The previous
+  default (`Pi agent timed out after 60000ms`) was too tight for
+  non-trivial research queries on large pages (e.g. fontawesome.com
+  docs) and surfaced as an agent error even when the subagent was
+  making progress. The new default is `DEFAULT_PI_AGENT_TIMEOUT_MS`
+  (`extensions/pi-agent.ts`, currently 180000ms = 3 min). The
+  resumable-subagent flow and the agent-error resume hint from
+  0.7.1 stay in place as the fallback for the rare cases that still
+  exceed the budget.
+
+### Added
+
+- **CLI:** new `--timeout <ms>` flag for `pi-webfetch webfetch`. When
+  `--query` is set, the value is forwarded to the research subagent
+  and overrides the 180s default. `0`, negative, and non-integer
+  values are rejected.
+- **MCP `webfetch` tool:** new optional `timeout` integer field in
+  the zod input schema (`z.number().int().positive()`). Forwarded to
+  `webfetchResearch` so an MCP client (e.g. Codex) can size the
+  research budget per call.
+- **pi extension `webfetch` tool:** new optional `timeout` integer
+  field on `WEBFETCH_TOOL_PARAMS` (`Type.Integer({ minimum: 1 })`).
+  Same forwarding contract as the MCP tool.
+
+### Changed
+
+- `extensions/pi-agent.ts::SpawnPiAgentOptions.timeout` now defaults
+  to `DEFAULT_PI_AGENT_TIMEOUT_MS` (180000ms) instead of a hard-coded
+  60000. The constant is exported and documented; callers that want
+  a different budget pass a positive integer in milliseconds.
+- `webfetchResearch` accepts one new additive parameter, `timeout?`
+  (positioned after `resumeSource`). All existing call sites compile
+  unchanged. The MCP / CLI / tool surfaces each forward their
+  `timeout` field to this parameter.
 ## [0.7.1] - 2026-06-05
 
 ### Added

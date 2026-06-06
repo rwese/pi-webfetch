@@ -17,6 +17,14 @@ const webfetchInputSchema = {
 		.describe(
 			'When true, include issue comments and PR review threads (gh-cli only). Default: off (a discovery hint is shown instead).',
 		),
+	timeout: z
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.describe(
+			'Wall-clock budget in milliseconds for the research subagent (only used when `query` is set). Defaults to 180000 (3 min). Use a larger value for large pages or complex queries.',
+		),
 };
 
 export interface WebfetchMcpDependencies {
@@ -64,7 +72,7 @@ export function registerWebfetchMcpTools(
 			description: 'Fetch and process web pages from URLs, optionally with a research query',
 			inputSchema: webfetchInputSchema,
 		},
-		async ({ url, query, includeComments }) =>
+		async ({ url, query, includeComments, timeout }) =>
 			toToolResult(
 				await deps.webfetchResearch(
 					url,
@@ -77,6 +85,7 @@ export function registerWebfetchMcpTools(
 					() => Date.now(),
 					undefined,
 					'mcp',
+					timeout,
 				),
 			),
 	);

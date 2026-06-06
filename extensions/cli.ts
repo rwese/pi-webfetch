@@ -46,7 +46,7 @@ export interface ParsedCommand {
 const helpText = `pi-webfetch
 
 Usage:
-  pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--include-comments] [--json]
+  pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--include-comments] [--timeout <ms>] [--json]
   pi-webfetch spa <url> [--wait-for networkidle|domcontentloaded] [--timeout <ms>] [--json]
   pi-webfetch providers [--json]
   pi-webfetch clear-cache [--url <url>] [--json]
@@ -64,6 +64,9 @@ Commands:
 Options:
   --include-comments     Include issue comments and PR review threads (gh-cli).
                          Default: off (a discovery hint is shown instead).
+  --timeout <ms>         Wall-clock budget in milliseconds for the research
+                         subagent. Defaults to 180000 (3 min). Use a larger
+                         value for large pages or complex queries.
 `;
 
 function write(io: CliIO, text: string): void {
@@ -135,8 +138,12 @@ function parseWaitFor(value: string | boolean | undefined): WaitFor {
 	throw new Error(`Invalid wait strategy '${String(value)}'`);
 }
 
-function parseTimeout(value: string | boolean | undefined): number {
-	if (value === undefined) return 30000;
+/**
+ * Parse a millisecond timeout value. The `defaultMs` is what the
+ * caller falls back to when the flag is omitted.
+ */
+function parseTimeout(value: string | boolean | undefined, defaultMs: number): number {
+	if (value === undefined) return defaultMs;
 	if (typeof value !== 'string') throw new Error('Invalid timeout');
 	const timeout = Number(value);
 	if (!Number.isInteger(timeout) || timeout <= 0) {
@@ -224,6 +231,9 @@ export async function runCli(
 
 		if (parsed.command === 'webfetch') {
 			const includeComments = parseBoolean(parsed.flags.includeComments);
+			// Default 180s matches the spawn default; users can still
+			// raise it per-call for unusually large / complex pages.
+			const timeout = parseTimeout(parsed.flags.timeout, 180000);
 			const result = await deps.webfetchResearch(
 				requireUrl(parsed),
 				optionalString(parsed.flags.query),
@@ -240,6 +250,7 @@ export async function runCli(
 					writeError(io, message);
 				},
 				'cli',
+				timeout,
 			);
 			writeFetchResult(io, result, wantsJson(parsed));
 			return 0;
@@ -249,7 +260,7 @@ export async function runCli(
 			const result = await deps.webfetchSPA(
 				requireUrl(parsed),
 				parseWaitFor(parsed.flags.waitFor),
-				parseTimeout(parsed.flags.timeout),
+				parseTimeout(parsed.flags.timeout, 30000),
 			);
 			writeFetchResult(io, result, wantsJson(parsed));
 			return 0;
