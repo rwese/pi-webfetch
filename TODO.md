@@ -72,21 +72,21 @@ Plan: [PLAN_PI_JSONRPC.md](./docs/plans/PLAN_PI_JSONRPC.md) (Switch the research
 
 ## Step 5 — Polish
 
-- [ ] `npm run validate` green (typecheck + lint + tests).
-- [ ] `npm run build` clean.
-- [ ] `npm pack --dry-run` and verify the new `dist/extensions/pi-rpc-client.js` and updated `dist/extensions/pi-agent.js` are present.
+- [x] `npm run validate` green (typecheck + lint + tests).
+- [x] `npm run build` clean.
+- [x] `npm pack --dry-run` and verify the new `dist/extensions/pi-rpc-client.js` and updated `dist/extensions/pi-agent.js` are present.
 - [ ] Manual smoke (deferred to a real pi session): `/webfetch <url> "summarize"` against a moderately large page; observe live tool progress; force a failure and verify the byte-identical fallback + resume-command notify still work.
-- [ ] Small, scoped commits per step (one step per commit, conventional-commits subject).
+- [x] Small, scoped commits per step (one step per commit, conventional-commits subject).
 
 ## Definition of Done
 
-- [ ] All step items complete.
-- [ ] `npm run validate` green.
-- [ ] `CHANGELOG.md` has a "Changed" entry describing the transport switch and live-progress UX.
-- [ ] `docs/plans/PI_RPC_NOTES.md` exists and covers the protocol quirks.
-- [ ] `AGENTS.md` "Architecture Notes" has the JSON-RPC paragraph.
-- [ ] `docs/plans/PLAN_AGENT_ERROR_RESUME.md` has the cross-reference.
-- [ ] `npm run build` clean.
-- [ ] `npm pack --dry-run` shows the new `dist/extensions/pi-rpc-client.js` and updated `dist/extensions/pi-agent.js`.
-- [ ] No `TODO` / `FIXME` / debug code left behind.
-- [ ] One commit per step, conventional-commits subject.
+- [x] All step items complete (manual smoke is the only remaining item; deferred to a real pi session).
+- [x] `npm run validate` green.
+- [x] `CHANGELOG.md` has a "Changed" entry describing the transport switch and live-progress UX.
+- [x] `docs/plans/PI_RPC_NOTES.md` exists and covers the protocol quirks.
+- [x] `AGENTS.md` "Architecture Notes" has the JSON-RPC paragraph.
+- [x] `docs/plans/PLAN_AGENT_ERROR_RESUME.md` has the cross-reference.
+- [x] `npm run build` clean.
+- [x] `npm pack --dry-run` shows the new `dist/extensions/pi-rpc-client.js` and updated `dist/extensions/pi-agent.js`.
+- [x] No `TODO` / `FIXME` / debug code left behind.
+- [x] One commit per step, conventional-commits subject.
