@@ -141,3 +141,104 @@ deferred to future slices. They are recorded here so the boundary of the
 | Auto-fetching of referenced issues/PRs | A fetched body that references another issue/PR is not auto-expanded. |
 | Additional GitHub fetch options | Only `includeComments` is implemented today. Future options (`includeReviews`, `maxCommentDepth`, `includeReactions`) are additive on `GitHubFetchOptions`. |
 
+
+---
+
+## Review Findings — 2026-06-06 (hands-on review of v0.8.0)
+
+Surfaced by exercising the extension against the test matrix in
+[`docs/reviews/webfetch-review-2026-06-06.md`](./reviews/webfetch-review-2026-06-06.md).
+Plan: [PLAN_WEBFETCH_REVIEW_FIXES.md](./plans/PLAN_WEBFETCH_REVIEW_FIXES.md).
+Three milestones → v0.9.0.
+
+| ID | Priority | Finding | Status | Milestone |
+|----|----------|---------|--------|-----------|
+| `2026-06-06-BXAA` | **BLOCKER** | Cache has no TTL and no content validation; a single bad write poisons the URL forever | ✅ Done (v0.9.0) | M1 |
+| `2026-06-06-BXAB` | HIGH | Markdown image references render as broken `[ref-N]` placeholders | ⏳ Planned | M2 |
+| `2026-06-06-BXAC` | HIGH | Wikipedia donation banner is captured as content | ⏳ Planned | M2 |
+| `2026-06-06-BXAD` | MEDIUM | Wikipedia `wikitable` tables are mangled by column-header heuristic | ⏳ Planned | M2 |
+| `2026-06-06-BXAE` | MEDIUM | Markdown post-processing mangles escaped brackets (`\[1\]` survives) | ⏳ Planned | M2 |
+| `2026-06-06-BXAF` | MEDIUM | Default provider reuses a single browser tab → race conditions across fetches and across processes | ✅ Done (v0.9.0) | M1 |
+| `2026-06-06-BXAG` | MEDIUM | `agent-browser` static-fallback warning shown on every call | ⏳ Planned | M3 |
+| `2026-06-06-BXAH` | LOW | `details.provider === "default"` reads as "the GitHub fast path" | ⏳ Planned | M3 |
+| `2026-06-06-BXAI` | LOW | Static-fallback cache hit discards the browser-side raw HTML | ✅ Verified in v0.8.0 (`test/static-fetch-raw.test.ts`); only CHANGELOG / BACKLOG note needed | M3 |
+| `2026-06-06-BXAJ` | LOW | `Processed as: spa` for pages that are not SPAs | ⏳ Planned | M3 |
+| `2026-06-06-BXAK` | LOW | `webfetch-clear-cache` is per-URL; no batch UX | ✅ Done (v0.9.0) | M3 |
+
+### Why Finding 1 and Finding 6 land together (M1)
+
+A bad cache write (Finding 1) is caused by a browser-tab race (Finding 6). With the per-tab fix in place, the race window closes; with the TTL + content-validation fix, a stray bad write cannot haunt the user past one hour. Either fix on its own is incomplete.
+
+### Why Finding 9 is "verified, no code change"
+
+`extensions/services/static-fetch.ts` already populates `rawContent` and `rawContentType` for HTML, markdown, and text/plain responses (the binary path intentionally does not). `test/static-fetch-raw.test.ts` covers all four paths. The M3 task is a final regression pass plus a CHANGELOG note so users know the behaviour is intentional.
+
+### Smoke test after v0.9.0
+
+Re-run the review's test matrix (URLs 1, 2, 6, 11, 12) in a real pi session. The critical assertion: call #11 (the poisoned-cache case) now returns the correct Wikipedia "Markdown" article, not the `earendil-works/pi` README. If the assertion fails, the cache TTL or content-validation step is broken; revert the M1 release.
+
+## Done ✅
+
+### M1 — Cache correctness (review findings 1, 6) [DONE 2026-06-06]
+
+- [x] **M1.A — Cache TTL.** `isFresh(entry, ttlMs?)` in
+  `extensions/cache.ts`; `DEFAULT_CACHE_TTL_MS = 1h`;
+  `cacheTtlMs` threaded through CLI (`--cache-ttl <ms>`),
+  MCP `webfetch` tool, pi extension tool, and
+  `WebfetchDetails`. Pinned by `test/cache-ttl.test.ts`.
+- [x] **M1.B — Cache content validation.**
+  `validateCacheEntry(entry, requestedUrl)` cross-checks
+  `finalUrl` / `pageTitle` / raw `<title>`. Mismatch →
+  warn and skip persist. Pinned by
+  `test/cache-content-validation.test.ts`.
+- [x] **M1.C — Per-process browser session.** `BrowserManager`
+  derives `AGENT_BROWSER_SESSION = ${os.hostname()}:${process.pid}`
+  once in the constructor.
+- [x] **M1.D — Per-fetch tab isolation.** `agent-browser
+  tab new <url> --label webfetch-<uuid>`, close in
+  `finally`. Pinned by
+  `test/browser-tab-isolation.test.ts`.
+- [x] **M1.E — `webfetch-clear-cache` batch UX.**
+  `--all`, `--older-than <duration>`, `--dry-run`. Pinned
+  by `test/clear-cache-flags.test.ts`.
+- [x] **M1.F — Docs.** `docs/cache.md`; README and
+  CHANGELOG updated.
+
+### M2 — Markdown fidelity (review findings 2, 3, 4, 5) [DONE 2026-06-06]
+
+- [x] **M2.A — Pin current image behaviour.** Pinned by
+  `test/image-inlining.test.ts`.
+- [x] **M2.B — Inline images by default.**
+  `extractEmbeddedImages` keeps `![alt](url)` intact
+  (opt-in `{ extract: true }` for pre-v0.9.0).
+- [x] **M2.C — Selector denylist.** `cleanHtml` accepts
+  `extraSelectors`; default provider threads a
+  page-specific Wikipedia denylist. Pinned by
+  `test/denylist.test.ts`.
+- [x] **M2.D — Wikitable turndown rule.** Custom
+  `wikitable` rule emits GFM tables. Pinned by
+  `test/table-wikitables.test.ts`.
+- [x] **M2.E — Un-escape brackets.** `unescapeBrackets`
+  strips `\[` / `\]` outside code blocks. Pinned by
+  `test/markdown-unescape.test.ts`.
+- [x] **M2.F — Refresh snapshots / CHANGELOG.** All
+  regression cases pass under the new behaviour.
+
+### M3 — Polish (review findings 7, 8, 9, 10, 11) [DONE 2026-06-06]
+
+- [x] **M3.A — Pin current provider name.**
+  `DefaultProvider.name` stays `"default"`.
+- [x] **M3.B — Rename `default` → `browser` in
+  user-facing surfaces.** New `providerDisplayName` helper.
+  Pinned by `test/provider-name.test.ts`.
+- [x] **M3.C — Widen `processedAs` union.** New `html`,
+  `static`, `cache`, `binary` values. Pinned by
+  `test/processed-as-labels.test.ts`.
+- [x] **M3.D — Sticky `staticOnly` warning.**
+  `browserWarning` is set only on the static-fallback
+  path. Pinned by `test/static-only-warning.test.ts`.
+- [x] **M3.E — Finding 9 verification.** Already covered
+  by `test/static-fetch-raw.test.ts`.
+- [x] **M3.F — README + CHANGELOG + final regression.**
+  README, CHANGELOG, and `docs/cache.md` updated;
+  `npm run validate` green.

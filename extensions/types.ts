@@ -6,12 +6,43 @@ export interface WebfetchDetails {
 	url: string;
 	contentType: string | null;
 	status: number;
-	processedAs: 'markdown' | 'binary' | 'error' | 'spa' | 'fallback' | 'research';
+	/**
+	 * How the content was processed. Surfaces on the user-facing
+	 * `Processed as: ...` header. v0.9.0 (M3) widened the union
+	 * to distinguish the real-browser cases (`'spa'`, `'html'`)
+	 * from the static-fallback (`'static'`, `'fallback'`) and
+	 * the cache hit (`'cache'`) cases.
+	 *
+	 * The user-facing labels in `fetch-phases.ts::FETCH_PHASE_LABELS`
+	 * are derived from this enum, so new values automatically
+	 * pick up their phase label.
+	 */
+	processedAs:
+		| 'spa'
+		| 'html'
+		| 'static'
+		| 'fallback'
+		| 'binary'
+		| 'error'
+		| 'cache'
+		| 'partial'
+		| 'metadata'
+		| 'research';
 	tempFileSize?: number;
 	truncated?: boolean;
 	originalSize?: number;
 	extracted?: boolean;
 	browserWarning?: string;
+	/**
+	 * v0.9.0 (M3.D): when the `browserWarning` is shown
+	 * once per session (the first call to land in the
+	 * static-fallback path), subsequent calls set this flag
+	 * instead of re-emitting the warning. The
+	 * `Processed as: ...` header is still `static` so the
+	 * caller can see they are on the static path; the
+	 * browser-side warning is suppressed.
+	 */
+	staticOnly?: boolean;
 	provider?: string;
 	extractionMethod?: string;
 	/** Current phase for streaming status display */
@@ -72,6 +103,27 @@ export interface WebfetchDetails {
 	 * `undefined` when no raw content is available.
 	 */
 	rawContentType?: string | null;
+	/**
+	 * Final URL after redirects, when the provider surfaces it
+	 * (the default provider always does). Used by the cache
+	 * content-validation pass to defend against the
+	 * poisoned-cache case (review finding 1): a mismatched
+	 * `finalUrl` causes the cache write to be rejected with a
+	 * warning. `undefined` for providers that do not expose
+	 * the post-redirect URL.
+	 */
+	finalUrl?: string;
+	/**
+	 * Page `<title>` extracted from the rendered HTML, when the
+	 * provider surfaces it (the default provider does, via
+	 * `ProviderFetchResult.metadata.title`). Used by the cache
+	 * content-validation pass as a secondary signal: a
+	 * `<title>` that does not contain the URL's path key
+	 * (fuzzy-matched, see `validateCacheEntry`) rejects the
+	 * cache write. `undefined` for providers / content types
+	 * that do not produce a title.
+	 */
+	pageTitle?: string;
 	/**
 	 * Absolute path to the session work dir for the research
 	 * subagent. `inputFile` and `inputRawFile` (when set) live
@@ -149,6 +201,21 @@ export interface ProviderFetchResult {
 	rawContent?: string;
 	/** MIME type hint for `rawContent`. */
 	rawContentType?: string | null;
+	/**
+	 * Final URL after redirects, when the provider surfaces it
+	 * (the default provider always does). The fetch service
+	 * forwards this onto `WebfetchDetails.finalUrl` so the
+	 * cache content-validation pass can confirm the cache
+	 * write is for the requested URL (review finding 1).
+	 */
+	finalUrl?: string;
+	/**
+	 * Rendered wait condition reported by the provider. `'spa'`
+	 * (default provider, network-idle wait), `'html'` (real
+	 * browser, domcontentloaded wait), or `'static'` (HTTP
+	 * only). Forwarded onto `WebfetchDetails.processedAs`.
+	 */
+	processedAs?: 'spa' | 'html' | 'static';
 }
 
 export interface WebfetchProvider {

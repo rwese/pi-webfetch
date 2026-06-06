@@ -7,7 +7,33 @@
 import type { FetchResult, WebfetchDetails } from '../types.js';
 import { isBinaryContentType, getExtensionFromContentType } from '../content-types.js';
 import { extractMainContent, convertToMarkdown } from '../html.js';
-import { removeMarkdownAnchors, extractEmbeddedImages } from '../markdown.js';
+import { removeMarkdownAnchors, extractEmbeddedImages, unescapeBrackets } from '../markdown.js';
+
+/**
+ * Once-per-process `browserWarning` flag (M3.D). The first
+ * call to land in the static-fallback path emits the
+ * `browserWarning` line so the user sees the warning exactly
+ * once. Subsequent calls set `staticOnly: true` instead.
+ * The flag is process-scoped (it tracks the lifetime of the
+ * `AGENT_BROWSER_SESSION`).
+ */
+let staticOnlyWarningConsumed = false;
+
+function consumeStaticOnlyWarning(): boolean {
+	if (staticOnlyWarningConsumed) return false;
+	staticOnlyWarningConsumed = true;
+	return true;
+}
+
+/**
+ * Test-only helper: reset the once-per-process warning flag
+ * between test cases. Not exported from `index.ts`; reachable
+ * via `import { __resetStaticOnlyWarningForTest } from
+ * '.../static-fetch.js'`.
+ */
+export function __resetStaticOnlyWarningForTest(): void {
+	staticOnlyWarningConsumed = false;
+}
 import { convertGitHubToRaw } from '../utils/url.js';
 import { getTempFilePath, truncateToSize } from '../utils/formatting.js';
 import { buildFetchHeader } from './header-builder.js';
@@ -99,7 +125,12 @@ async function handleMarkdownFetch(
 		url,
 		contentType,
 		status,
-		processedAs: 'markdown',
+		// v0.9.0 (M3.C): renamed `markdown` to `static` so
+		// the user-facing `Processed as: ...` header
+		// distinguishes a static fetch from a real-browser
+		// fetch. The internal `processedAs` enum is widened
+		// accordingly; old values stay valid for back-compat.
+		processedAs: 'static',
 		originalSize,
 		tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
 		truncated,
@@ -134,6 +165,7 @@ async function handleHtmlFetch(
 
 	// Apply post-processing
 	markdown = removeMarkdownAnchors(markdown);
+	markdown = unescapeBrackets(markdown);
 	const imageResult = await extractEmbeddedImages(markdown);
 	markdown = imageResult.content;
 	if (imageResult.tempFilePath) {
@@ -147,12 +179,29 @@ async function handleHtmlFetch(
 		url,
 		contentType,
 		status,
+		// Static fetch fallback path: read HTML / text / json
+		// over plain HTTP. The user-facing `Processed as: ...`
+		// header reads as `static` (or `fallback` for the
+		// graceful-degradation path). Distinguishing the two
+		// helps the user spot when the browser was unavailable.
 		processedAs: 'fallback',
 		originalSize,
 		tempFileSize: Buffer.byteLength(markdown, 'utf-8'),
 		truncated,
 		extracted,
-		browserWarning: 'Using static fetch (no browser provider available)',
+		// v0.9.0 (M3.D): the `browserWarning` is shown once
+		// per process. The first call to land in the
+		// static-fallback path sets it; subsequent calls set
+		// `staticOnly: true` instead so the warning is sticky
+		// (visible in the first result) but does not repeat
+		// on every call. The warning is reset on a new
+		// process, matching the lifetime of the
+		// `AGENT_BROWSER_SESSION`.
+		...(consumeStaticOnlyWarning()
+			? {
+					browserWarning: 'Using static fetch (no browser provider available)',
+				}
+			: { staticOnly: true }),
 		// Surface the raw HTML so the research service can write
 		// `input_raw.html` in the session work dir. The subagent
 		// can re-read the original markup when the markdown

@@ -90,3 +90,75 @@ Plan: [PLAN_PI_JSONRPC.md](./docs/plans/PLAN_PI_JSONRPC.md) (Switch the research
 - [x] `npm pack --dry-run` shows the new `dist/extensions/pi-rpc-client.js` and updated `dist/extensions/pi-agent.js`.
 - [x] No `TODO` / `FIXME` / debug code left behind.
 - [x] One commit per step, conventional-commits subject.
+
+---
+
+# Plan Implementation TODO
+
+Plan: [PLAN_WEBFETCH_REVIEW_FIXES.md](./docs/plans/PLAN_WEBFETCH_REVIEW_FIXES.md) (Address all 11 findings from the 2026-06-06 hands-on review in v0.9.0)
+
+## Goal
+
+Ship v0.9.0 that fixes every finding in
+[`docs/reviews/webfetch-review-2026-06-06.md`](./docs/reviews/webfetch-review-2026-06-06.md).
+Three internal milestones (correctness → fidelity → polish), one
+release. Order matters: M1 must land before M2 (the cache test
+fixtures for M2 depend on the M1 TTL helpers), and M2 must land
+before M3 (the markdown snapshots updated in M2 also appear in M3
+tests).
+
+## Milestone 1 — Correctness (BLOCKER; Findings 1 + 6) — Done
+
+### Ready
+
+- [x] **M1.A** — TTL: add `isFresh(entry, ttlMs)` in `extensions/cache.ts`; thread `cacheTtlMs?: number` through `getCachedResult` and `cacheFetchResult`; default TTL = 1 h. CLI / MCP / pi-tool / extension surface the option. Add `test/cache-ttl.test.ts`. **Verify:** `npm test -- --run test/cache-ttl.test.ts` green; `npm run validate` green.
+- [x] **M1.B** — Content validation: add `validateCacheEntry(entry, requestedUrl)`; compare `<title>` / `finalUrl` against the requested URL; mismatch → log warning on `details.notify` / stderr / `_meta.details.notify`; do not persist. Add `test/cache-content-validation.test.ts` with a poisoned fixture. **Verify:** the new test passes; existing `test/cases/*` regression snapshots remain green.
+- [x] **M1.C** — Per-process session: in `BrowserManager` constructor, compute `sessionName = `${os.hostname()}:${process.pid}``; pass via `AGENT_BROWSER_SESSION` env var (or `--session` argv) on every `execAsync` call. Update existing `BrowserManager` tests to assert the env is set. **Verify:** `npm test -- --run test/resource-cleanup.test.ts` green.
+- [x] **M1.D** — Per-fetch tab: replace the `currentUrl` skip-open shortcut with a per-fetch tab id (`crypto.randomUUID()`). `extractHtml` always opens a new tab; closes it in `finally`. Remove the idle timeout and the `currentUrl` field. Add `test/browser-tab-isolation.test.ts`. **Verify:** the new test green; `npm run validate` green.
+- [x] **M1.E** — Clear-cache flags: add `clearAllCache({ olderThanMs })` and `clearCacheOlderThan(url, ms)` in `cache.ts`. Register the new `webfetch:clear-cache` command with `--all`, `--older-than <duration>`, `--dry-run`. Document in help and README. **Verify:** `test/clear-cache-flags.test.ts` green.
+- [x] **M1.F** — Docs: write `docs/cache.md`; add CHANGELOG "Added" / "Changed" entries; update README with `--cache-ttl`, the new `webfetch-clear-cache` flags, and a link to `docs/cache.md`; update `BACKLOG.md` with the 2026-06-06 review table. **Verify:** `npm run validate` green; `npm run build` clean; `npm pack --dry-run` shows updated files.
+
+## Milestone 2 — Markdown fidelity (Findings 2, 3, 4, 5) — Done
+
+### Ready
+
+- [x] **M2.A** — Pin current image behaviour: add `test/image-inlining.test.ts` against a Wikipedia fixture that pins the **current** broken `[ref-N]` shape (the "before" snapshot).
+- [x] **M2.B** — Inline images by default: rewrite `extractEmbeddedImages` to emit `![alt](absolute-url)`; keep the extract-to-temp-file path as a non-default opt-in. Update `test/image-inlining.test.ts` to assert the new shape.
+- [x] **M2.C** — Denylist: add the selector denylist in `cleanHtml` and `BrowserManager.extractHtml` cheerio pre-pass. Add `test/denylist.test.ts`.
+- [x] **M2.D** — Wikitable turndown rule: add `wikitables` rule in `turndown-config.ts`; register after `preserveCodeBlocks`. Add `test/table-wikitables.test.ts`.
+- [x] **M2.E** — Un-escape brackets: add `unescapeMarkdownBrackets(markdown)` in `extensions/markdown.ts`; call from `removeMarkdownAnchors` (or a new post-processing pass). Add `test/markdown-unescape.test.ts`.
+- [x] **M2.F** — Refresh `test/cases/*` snapshots (Wikipedia Pi / Apollo-11); rerun `npm run test:regression` and `npm run report-url`; CHANGELOG "Changed" entry.
+
+### Blocked
+
+- none
+
+### Done
+
+- All M2 tasks complete.
+
+## Milestone 3 — Polish (Findings 7, 8, 9, 10, 11) — Done
+
+### Ready
+
+- [x] **M3.A** — Pin current `provider` name: add `test/provider-name.test.ts` that pins `details.provider === 'default'` against the current code.
+- [x] **M3.B** — Rename `default` → `browser` in user-facing surfaces: `DefaultProvider.fetch` returns `providerName: 'browser'`; document the user-facing enum; update `test/provider-name.test.ts`.
+- [x] **M3.C** — Widen `processedAs` union: add `'html'` and `'static'`; `DefaultProvider.fetch` reports `'spa'` for `waitFor === 'networkidle'`, `'html'` for `'domcontentloaded'`. Rename `'fallback'` to `'static'` in the static-fetch path (snapshot update). Add `test/processed-as-labels.test.ts`.
+- [x] **M3.D** — Sticky `staticOnly` warning: hoist the "have we shown the warning yet" flag to module scope; per-call `browserWarning` becomes once-only content line + sticky `details.staticOnly: true`. Add `test/static-only-warning.test.ts`.
+- [x] **M3.E** — Finding 9 verification: re-run `test/static-fetch-raw.test.ts` and `test/research-input-files.test.ts`; document the no-op in CHANGELOG / BACKLOG with a "verified, no code change needed" note.
+- [x] **M3.F** — README + CHANGELOG + final regression: update README with the new flags, the `staticOnly` flag, the `provider` enum; CHANGELOG entries for M3; rerun `npm run test:regression` and `npm run report-url` against the live URLs in the review's test matrix.
+
+## Definition of Done (for the release)
+
+- [ ] Every M1, M2, M3 task above is complete.
+- [ ] `npm run validate` is green.
+- [ ] `npm run build` is clean.
+- [ ] `npm pack --dry-run` shows updated `dist/`, `extensions/`, `src/`, `docs/`, `README.md`, `CHANGELOG.md`.
+- [ ] CHANGELOG has "Added" / "Changed" / "Fixed" entries covering all three milestones.
+- [ ] README documents `--cache-ttl`, `cacheTtlMs`, the new `webfetch-clear-cache` flags, the `staticOnly` flag, and the `provider` enum.
+- [ ] `docs/cache.md` exists.
+- [ ] `BACKLOG.md` has a 2026-06-06 review table mirroring the 2026-06-05 one, with each finding's status set after v0.9.0 ships.
+- [ ] One commit per milestone (three total), conventional-commits subjects.
+- [ ] No `TODO` / `FIXME` / debug code in the diff.
+- [ ] Pre-commit hooks pass.
+- [ ] Smoke test in a real pi session: re-run the review's test matrix (URLs 1, 2, 6, 11, 12) and confirm call #11 returns the correct Wikipedia content (no cache poisoning).

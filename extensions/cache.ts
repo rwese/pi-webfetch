@@ -53,6 +53,22 @@ export interface CacheEntry {
 	contentType: string | null;
 	status: number;
 	cachedAt: number;
+	/**
+	 * Final URL after redirects, when the provider surfaces it.
+	 * Used by `validateCacheEntry` to defend against the
+	 * poisoned-cache case where a race condition (e.g. shared
+	 * browser tab) caused the provider to extract HTML for the
+	 * wrong URL. When present, the cache write is rejected
+	 * unless the requested URL matches `finalUrl` (or a
+	 * fuzzy-URL-derived title match succeeds).
+	 */
+	finalUrl?: string;
+	/**
+	 * Page `<title>` extracted from the rendered HTML, when the
+	 * provider surfaces it. Used as a secondary content-validation
+	 * signal in `validateCacheEntry`.
+	 */
+	pageTitle?: string;
 	provider?: string;
 	extractionMethod?: string;
 	/**
@@ -147,19 +163,62 @@ export async function clearCache(
 }
 
 /**
- * Clear all cached content
+ * Options for batch cache clears.
+ *
+ * - `olderThanMs`: only clear entries whose `cachedAt` is at least
+ *   this many milliseconds in the past. `undefined` clears every
+ *   entry. Used by `webfetch-clear-cache --older-than <duration>`
+ *   and `--all` (the latter is just `clearAllCache({})`).
  */
-export async function clearAllCache(): Promise<number> {
+export interface ClearCacheOptions {
+	olderThanMs?: number;
+}
+
+/**
+ * Clear all cached content. With `olderThanMs` set, only entries
+ * whose `cachedAt` is at least that many ms in the past are
+ * removed; fresh entries are kept.
+ */
+export async function clearAllCache(options: ClearCacheOptions = {}): Promise<number> {
 	await ensureCacheDir();
 	const files = await readdir(CACHE_DIR);
+	const now = Date.now();
 	let count = 0;
 	for (const file of files) {
-		if (file.endsWith('.json')) {
-			await rm(join(CACHE_DIR, file));
-			count++;
+		if (!file.endsWith('.json')) continue;
+		const path = join(CACHE_DIR, file);
+		if (options.olderThanMs !== undefined) {
+			try {
+				const data = await readFile(path, 'utf-8');
+				const entry = JSON.parse(data) as CacheEntry;
+				if (now - entry.cachedAt < options.olderThanMs) {
+					continue;
+				}
+			} catch {
+				// Corrupt or unreadable entry: drop it (the user asked
+				// to clear, the file is unusable).
+			}
 		}
+		await rm(path);
+		count++;
 	}
 	return count;
+}
+
+/**
+ * Clear a single cached URL, but only when the entry is at least
+ * `olderThanMs` old. Returns `true` when a file was removed, `false`
+ * otherwise (no entry, fresh entry, or unreadable entry).
+ */
+export async function clearCacheOlderThan(
+	url: string,
+	olderThanMs: number,
+	options?: CacheKeyOptions,
+): Promise<boolean> {
+	const entry = await getCache(url, options);
+	if (!entry) return false;
+	if (Date.now() - entry.cachedAt < olderThanMs) return false;
+	return clearCache(url, options);
 }
 
 /**
@@ -181,6 +240,68 @@ export async function getCacheStats(): Promise<{ count: number; totalSize: numbe
 	}
 
 	return { count: jsonFiles.length, totalSize };
+}
+
+/**
+ * Default cache TTL. 1 hour is short enough that a "1 day ago"
+ * entry cannot haunt the current session and long enough to
+ * dedupe repeat fetches inside a single user session.
+ */
+export const DEFAULT_CACHE_TTL_MS = 60 * 60 * 1000;
+
+/**
+ * True when the entry is still inside the TTL window. A
+ * non-finite or non-positive `ttlMs` is treated as "always stale"
+ * — callers that want a different TTL pass a positive integer;
+ * we never expose a "no TTL" mode to defend against the
+ * poisoned-cache case (review finding 1).
+ */
+export function isFresh(entry: Pick<CacheEntry, 'cachedAt'>, now: number, ttlMs?: number): boolean {
+	const ttl = ttlMs ?? DEFAULT_CACHE_TTL_MS;
+	if (!Number.isFinite(ttl) || ttl <= 0) return false;
+	const age = now - entry.cachedAt;
+	return age >= 0 && age < ttl;
+}
+
+/**
+ * Parse a human-friendly duration string (e.g. `7d`, `2h`, `30m`,
+ * `45s`, `1500ms`) into milliseconds. Returns `null` for malformed
+ * input. Used by `webfetch-clear-cache --older-than <duration>`.
+ *
+ * Supported units:
+ *
+ * - `ms` / milliseconds
+ * - `s`  / seconds
+ * - `m`  / minutes
+ * - `h`  / hours
+ * - `d`  / days (24h)
+ *
+ * Bare integers are interpreted as milliseconds (matches the
+ * `--cache-ttl <ms>` convention).
+ */
+export function parseDurationToMs(value: string): number | null {
+	if (typeof value !== 'string') return null;
+	const trimmed = value.trim();
+	if (!trimmed) return null;
+	const match = /^(\d+(?:\.\d+)?)(ms|s|m|h|d)?$/i.exec(trimmed);
+	if (!match) return null;
+	const n = Number(match[1]);
+	if (!Number.isFinite(n) || n < 0) return null;
+	const unit = (match[2] ?? 'ms').toLowerCase();
+	switch (unit) {
+		case 'ms':
+			return n;
+		case 's':
+			return n * 1000;
+		case 'm':
+			return n * 60 * 1000;
+		case 'h':
+			return n * 60 * 60 * 1000;
+		case 'd':
+			return n * 24 * 60 * 60 * 1000;
+		default:
+			return null;
+	}
 }
 
 /**

@@ -11,7 +11,12 @@ import type {
 	ProviderFetchResult,
 	GitHubFetchOptions,
 } from '../types.js';
-import { removeMarkdownAnchors, extractEmbeddedImages } from '../markdown.js';
+import {
+	removeMarkdownAnchors,
+	extractEmbeddedImages,
+	unescapeBrackets,
+} from '../markdown.js';
+import { providerDisplayName } from '../providers/display-name.js';
 import { truncateToSize, getTempFilePath } from '../utils/formatting.js';
 import { isLikelyBinaryUrl } from '../utils/url.js';
 import { getExtensionFromContentType } from '../content-types.js';
@@ -27,6 +32,29 @@ const MAX_MARKDOWN_SIZE = 100 * 1024;
 export interface ProviderFetchOptions {
 	/** GitHub-specific fetch options. Forwarded to the gh-cli provider. */
 	github?: GitHubFetchOptions;
+	/**
+	 * Per-call cache TTL override in milliseconds. Falls back to
+	 * `DEFAULT_CACHE_TTL_MS` (1 hour). Threads the
+	 * `--cache-ttl <ms>` / `cacheTtlMs` flag from the CLI / MCP /
+	 * extension / pi-tool surfaces down to the cache layer.
+	 * Pinned in v0.9.0 (review finding 1).
+	 */
+	cacheTtlMs?: number;
+	/**
+	 * Per-call clock injection. Defaults to `() => Date.now()`.
+	 * The cache TTL check uses this so tests can assert
+	 * "fresh" / "stale" / "override" without mutating the
+	 * system clock. Production callers never pass it.
+	 */
+	cacheNow?: () => number;
+	/**
+	 * Optional notify channel for cache-validation warnings
+	 * (e.g. "cache write rejected: title mismatch"). The CLI /
+	 * MCP / extension surfaces pass their own channel; in-process
+	 * callers that omit it get the warning mirrored onto
+	 * `WebfetchDetails.notify` instead.
+	 */
+	cacheNotify?: (message: string, level: 'info' | 'warn' | 'error') => void;
 }
 
 /**
@@ -59,6 +87,27 @@ function buildCacheKeyFromOptions(options?: ProviderFetchOptions): CacheKeyOptio
 }
 
 /**
+ * Pick the cache TTL and clock injection out of a
+ * `ProviderFetchOptions` (or any superset) so the cache layer
+ * can honour a per-call override. Returns the previous
+ * `CacheKeyOptions` shape plus the TTL / clock fields, which
+ * `CacheFetchOptions` understands.
+ */
+function buildCacheFetchOptions(
+	options?: ProviderFetchOptions,
+): CacheKeyOptions & { cacheTtlMs?: number; now?: () => number } {
+	const key = buildCacheKeyFromOptions(options);
+	if (options?.cacheTtlMs === undefined && options?.cacheNow === undefined) {
+		return key;
+	}
+	return {
+		...key,
+		...(options?.cacheTtlMs !== undefined ? { cacheTtlMs: options.cacheTtlMs } : {}),
+		...(options?.cacheNow ? { now: options.cacheNow } : {}),
+	};
+}
+
+/**
  * Main webfetch function - auto-detects best fetch method
  */
 export async function fetchUrl(
@@ -67,7 +116,7 @@ export async function fetchUrl(
 	provider?: string,
 	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
-	const cacheKey = buildCacheKeyFromOptions(options);
+	const cacheKey = buildCacheFetchOptions(options);
 
 	// Check cache first (scoped to the option-set so different option
 	// combinations cannot poison each other).
@@ -78,7 +127,11 @@ export async function fetchUrl(
 
 	// Check if URL is likely binary
 	if (isLikelyBinaryUrl(url)) {
-		return cacheFetchResult(await handleBinary(url, fetchFn), cacheKey);
+		return cacheFetchResult(
+			await handleBinary(url, fetchFn),
+			cacheKey,
+			(message, level) => writeNotify(options, message, level),
+		);
 	}
 
 	// Check for provider-based fetch (default for HTML content)
@@ -100,7 +153,12 @@ export async function fetchUrl(
 			const providerResult = await manager.fetch(url, config);
 
 			if (providerResult && 'content' in providerResult) {
-				return processProviderResult(providerResult as ProviderFetchResult, url, cacheKey);
+				return processProviderResult(
+					providerResult as ProviderFetchResult,
+					url,
+					cacheKey,
+					options,
+				);
 			}
 		} catch {
 			// Provider failed, fall back to static fetch
@@ -108,7 +166,27 @@ export async function fetchUrl(
 	}
 
 	// Fallback to static fetch
-	return cacheFetchResult(await staticFetch(url, fetchFn), cacheKey);
+	return cacheFetchResult(
+		await staticFetch(url, fetchFn),
+		cacheKey,
+		(message, level) => writeNotify(options, message, level),
+	);
+}
+
+/**
+ * Surface a `cacheFetchResult` warning on the optional
+ * `options.cacheNotify` channel. The CLI / MCP / extension
+ * surfaces wire their own channel; in-process callers that
+ * pass `options.cacheNotify` get the same line via a single
+ * shim. Centralised so the test suite can assert on it
+ * without touching the real notify surfaces.
+ */
+function writeNotify(
+	options: ProviderFetchOptions | undefined,
+	message: string,
+	level: 'info' | 'warn' | 'error',
+): void {
+	options?.cacheNotify?.(message, level);
 }
 
 /**
@@ -118,9 +196,11 @@ async function processProviderResult(
 	result: ProviderFetchResult,
 	url: string,
 	cacheKey: CacheKeyOptions = {},
+	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
 	const originalSize = Buffer.byteLength(result.content, 'utf-8');
 	let cleanedContent = removeMarkdownAnchors(result.content);
+	cleanedContent = unescapeBrackets(cleanedContent);
 
 	// Extract embedded images to temp file
 	const imageResult = await extractEmbeddedImages(cleanedContent);
@@ -151,7 +231,7 @@ async function processProviderResult(
 		tempFileSize: Buffer.byteLength(content, 'utf-8'),
 		truncated,
 		extracted: true,
-		provider: result.providerName,
+		provider: providerDisplayName(result.providerName),
 		extractionMethod: result.extractionMethod,
 		...(githubHint ? { githubHint } : {}),
 		// Forward the provider's raw payload (browser HTML, etc.) so
@@ -163,6 +243,13 @@ async function processProviderResult(
 		...(result.rawContentType !== undefined
 			? { rawContentType: result.rawContentType }
 			: {}),
+		// Content-validation signals: forward the provider's
+		// `finalUrl` (the URL the provider actually rendered, after
+		// redirects) and the rendered `<title>` (when surfaced via
+		// `metadata.title`) so `cacheFetchResult` can confirm the
+		// cache write is for the requested URL.
+		...(result.finalUrl ? { finalUrl: result.finalUrl } : {}),
+		...(readPageTitle(result.metadata) ? { pageTitle: readPageTitle(result.metadata) } : {}),
 	};
 
 	return cacheFetchResult(
@@ -171,7 +258,19 @@ async function processProviderResult(
 			details,
 		},
 		cacheKey,
+		(message, level) => writeNotify(options, message, level),
 	);
+}
+
+/**
+ * Pull a `pageTitle` string out of a provider's `metadata` record.
+ * The default provider surfaces the rendered `<title>` under
+ * `metadata.title`; this shim keeps the call site clean.
+ */
+function readPageTitle(metadata: unknown): string | undefined {
+	if (!metadata || typeof metadata !== 'object') return undefined;
+	const title = (metadata as Record<string, unknown>).title;
+	return typeof title === 'string' && title.length > 0 ? title : undefined;
 }
 
 /**
@@ -183,7 +282,7 @@ export async function webfetchSPA(
 	timeout: number = 30000,
 	options?: ProviderFetchOptions,
 ): Promise<FetchResult> {
-	const cacheKey = buildCacheKeyFromOptions(options);
+	const cacheKey = buildCacheFetchOptions(options);
 
 	// Check cache first
 	const cached = await getCachedResult(url, cacheKey);
@@ -202,6 +301,7 @@ export async function webfetchSPA(
 	if (result && 'content' in result) {
 		const providerResult = result as ProviderFetchResult;
 		let cleanedText = removeMarkdownAnchors(providerResult.content);
+		cleanedText = unescapeBrackets(cleanedText);
 
 		// Extract embedded images
 		const imageResult = await extractEmbeddedImages(cleanedText);
@@ -229,7 +329,7 @@ export async function webfetchSPA(
 			tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
 			truncated,
 			extracted: true,
-			provider: providerResult.providerName,
+			provider: providerDisplayName(providerResult.providerName),
 			extractionMethod: providerResult.extractionMethod,
 			...(githubHint ? { githubHint } : {}),
 			// Same raw-payload forwarding as in fetchUrl above.
@@ -239,6 +339,17 @@ export async function webfetchSPA(
 			...(providerResult.rawContentType !== undefined
 				? { rawContentType: providerResult.rawContentType }
 				: {}),
+			// Content-validation signals: same forwarding as in
+			// fetchUrl above. The static-fetch fallback below
+			// bypasses `processProviderResult` so it has to set
+			// these fields itself (or skip them — the static path
+			// surfaces `rawContent` / `rawContentType` but the
+			// title heuristic is brittle for raw.githubusercontent
+			// URLs and other non-HTML inputs).
+			...(providerResult.finalUrl ? { finalUrl: providerResult.finalUrl } : {}),
+			...(readPageTitle(providerResult.metadata)
+				? { pageTitle: readPageTitle(providerResult.metadata) }
+				: {}),
 		};
 
 		return cacheFetchResult(
@@ -247,6 +358,7 @@ export async function webfetchSPA(
 				details,
 			},
 			cacheKey,
+			(message, level) => writeNotify(options, message, level),
 		);
 	}
 

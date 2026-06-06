@@ -87,7 +87,7 @@ describe('Table Preservation', () => {
 |------|------|
 | ![logo](data:image/png;base64,abc) | Company |
 | ![icon](https://example.com/icon.png) | App |`;
-			const result = await extractEmbeddedImages(input);
+			const result = await extractEmbeddedImages(input, { extract: true });
 			// Table structure should be preserved
 			expect(result.content).toContain('|');
 			expect(result.content).toContain('Image');
@@ -135,7 +135,7 @@ describe('Table Preservation', () => {
 | \`retries\` | 3 |`;
 
 			const step1 = removeMarkdownAnchors(input);
-			const step2 = await extractEmbeddedImages(step1);
+			const step2 = await extractEmbeddedImages(step1, { extract: true });
 
 			// All tables should be preserved
 			expect(step2.content).toContain('| Icon | Feature | Status |');

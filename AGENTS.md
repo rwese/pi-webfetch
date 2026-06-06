@@ -91,6 +91,15 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Binary content is downloaded to temp files and not analyzed.
 - Agent-error resume flow: research mode spawns the subagent as a real, named, persistent pi session (`--session-id <id>` / `--name <name>`) so the user can `pi --session <id>` into the failed transcript. On the agent-error path, the in-content fallback stays byte-identical to the pre-change baseline; the resume hint lives in `WebfetchDetails.subagentSessionId` / `subagentSessionName` / `resumeCommand` and a side-channel `notify` (TUI notify on the extension, stderr on the CLI, `_meta.details.notify` on the MCP). See `docs/plans/PLAN_AGENT_ERROR_RESUME.md` for the full design.
 
+## References
+
+- **Live webfetch testing** — `.agents/references/webfetch-testing.md`
+  has the 14-call live test matrix, the findings watchlist, and the
+  pre-flight / validation commands. Read it before touching
+  `extensions/cache.ts`, `extensions/services/*`, the default
+  provider in `src/providers/`, or `extensions/markdown.ts`. The
+  matrix is derived from `docs/reviews/webfetch-review-2026-06-06.md`.
+
 ## Boundaries
 
 ALWAYS:

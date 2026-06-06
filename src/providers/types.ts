@@ -69,6 +69,15 @@ export interface ProviderFetchResult {
   providerName: string;
   /** Fallback selector used if not primary method */
   fallbackSelector?: string;
+  /**
+   * Rendered wait condition. `'spa'` (default provider, real
+   * browser, network-idle wait), `'html'` (real browser,
+   * domcontentloaded wait), or `'static'` (HTTP only).
+   * Surfaced on `WebfetchDetails.processedAs` for the user-facing
+   * `Processed as:` line. Defaults to `'spa'` for the default
+   * provider for back-compat with the pre-0.9.0 baseline.
+   */
+  processedAs?: 'spa' | 'html' | 'static';
 }
 
 /**

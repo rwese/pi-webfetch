@@ -85,7 +85,9 @@ After code.`;
 const x = "![inline](should-not-extract.png)";
 \`\`\``;
 
-			const result = await extractEmbeddedImages(input);
+			// Use { extract: true } to get the pre-v0.9.0
+			// behaviour (placeholder + temp file).
+			const result = await extractEmbeddedImages(input, { extract: true });
 			// Image outside code block should be extracted
 			expect(result.content).toContain('![img][ref-1]');
 			// Image inside code block should be preserved

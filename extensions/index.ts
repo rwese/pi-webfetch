@@ -35,7 +35,12 @@ import { closeAllSessionsProviders } from './fetch.js';
 export { extractMainContent, convertToMarkdown } from './html.js';
 
 // Markdown post-processing
-export { removeMarkdownAnchors, extractEmbeddedImages, stripEmbeddedImages } from './markdown.js';
+export {
+	removeMarkdownAnchors,
+	extractEmbeddedImages,
+	stripEmbeddedImages,
+	unescapeBrackets,
+} from './markdown.js';
 
 // Content type detection
 export {
@@ -60,8 +65,12 @@ export {
 	getCache,
 	clearCache,
 	clearAllCache,
+	clearCacheOlderThan,
 	getCacheStats,
 	formatAge,
+	isFresh,
+	parseDurationToMs,
+	DEFAULT_CACHE_TTL_MS,
 } from './cache.js';
 
 // Constants

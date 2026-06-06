@@ -25,6 +25,14 @@ const webfetchInputSchema = {
 		.describe(
 			'Wall-clock budget in milliseconds for the research subagent (only used when `query` is set). Defaults to 180000 (3 min). Use a larger value for large pages or complex queries.',
 		),
+	cacheTtlMs: z
+		.number()
+		.int()
+		.positive()
+		.optional()
+		.describe(
+			'Per-call cache TTL override in milliseconds. Defaults to 3600000 (1 hour). Cached entries older than the TTL are treated as misses and re-fetched.',
+		),
 };
 
 export interface WebfetchMcpDependencies {
@@ -72,7 +80,7 @@ export function registerWebfetchMcpTools(
 			description: 'Fetch and process web pages from URLs, optionally with a research query',
 			inputSchema: webfetchInputSchema,
 		},
-		async ({ url, query, includeComments, timeout }) =>
+		async ({ url, query, includeComments, timeout, cacheTtlMs }) =>
 			toToolResult(
 				await deps.webfetchResearch(
 					url,
@@ -81,7 +89,14 @@ export function registerWebfetchMcpTools(
 					undefined,
 					undefined,
 					undefined,
-					includeComments !== undefined ? { github: { includeComments } } : undefined,
+					includeComments !== undefined || cacheTtlMs !== undefined
+						? {
+								...(includeComments !== undefined ? { github: { includeComments } } : {}),
+								...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
+							}
+						: includeComments !== undefined
+							? { github: { includeComments } }
+							: undefined,
 					() => Date.now(),
 					undefined,
 					'mcp',

@@ -5,6 +5,103 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- **Cache TTL (review finding 1, M1.A).** New
+  `isFresh(entry, now, ttlMs?)` helper and
+  `DEFAULT_CACHE_TTL_MS = 1 hour`. The cache layer is now
+  TTL-aware: a stale entry is treated as a miss and
+  re-fetched, so a "1 day ago" entry cannot haunt the
+  current session. Surface across the CLI
+  (`--cache-ttl <ms>`), the MCP `webfetch` tool
+  (`cacheTtlMs`), the pi extension tool, and the
+  `WebfetchDetails` shape. Pinned by
+  `test/cache-ttl.test.ts`.
+- **Cache content validation (review finding 1, M1.B).** New
+  `validateCacheEntry(entry, requestedUrl)` cross-checks the
+  provider's `finalUrl` (post-redirect URL) and the rendered
+  `<title>` (from `metadata.title` or extracted from
+  `rawContent`) against the requested URL. A mismatch rejects
+  the cache write with a warning on `WebfetchDetails.notify`
+  (and the `notify` callback the caller supplied). The
+  original `FetchResult` flows through unchanged. Pinned by
+  `test/cache-content-validation.test.ts`.
+- **Per-process `agent-browser` session (M1.C).** The
+  default provider's `BrowserManager` derives
+  `AGENT_BROWSER_SESSION = ${os.hostname()}:${process.pid}`
+  once in its constructor and passes it on every `execAsync`
+  call. Two concurrent `webfetch` processes on the same host
+  each get their own browser instance.
+- **Per-fetch browser tab (review finding 6, M1.D).** The
+  default provider allocates a fresh
+  `agent-browser tab new <url> --label webfetch-<uuid>` for
+  every fetch and closes it in `finally`. Replaces the v0.8.0
+  `currentUrl` skip-open shortcut that was the root cause of
+  the cache-poisoning race. Pinned by
+  `test/browser-tab-isolation.test.ts`.
+- **`webfetch-clear-cache` batch UX (review finding 11,
+  M1.E).** New `--all`, `--older-than <duration>`, and
+  `--dry-run` flags on the CLI, the TUI
+  `/webfetch-clear-cache` slash command, and the
+  `clearAllCache({ olderThanMs })` /
+  `clearCacheOlderThan(url, ms)` helpers. Accepts `7d`,
+  `2h`, `30m`, `45s`, `1500ms`, or a bare integer in ms.
+  Pinned by `test/clear-cache-flags.test.ts`.
+- **New `docs/cache.md`** describing the cache on-disk
+  layout, TTL defaults, content validation, and the
+  per-process / per-tab isolation guarantees.
+- **User-facing provider rename (review finding 8, M3.B).**
+  `DefaultProvider.displayName` is now `"browser"` (the
+  internal `WebfetchProvider.name` stays `"default"` for
+  back-compat with the `--provider` flag and the provider
+  manager's priority sort). Surfaces on
+  `WebfetchDetails.provider` and the
+  `Processed as: ...` header. Pinned by
+  `test/provider-name.test.ts`.
+- **`Processed as: ...` enum widened (review finding 10,
+  M3.C).** New `processedAs` values `html`, `static`,
+  `cache`, and `binary`; the `markdown` value is renamed to
+  `static` to match the fetch path. The user-facing label
+  reads naturally for each path (`spa` for real-browser
+  network-idle, `html` for real-browser domcontentloaded,
+  `static` for HTTP-only, `cache` for cache hit, `binary`
+  for downloads). Pinned by
+  `test/processed-as-labels.test.ts`.
+- **Inline images by default (review finding 2, M2.B).**
+  `extractEmbeddedImages` now keeps inline
+  `![alt](url)` references intact (no `[ref-N]`
+  placeholders, no temp file). Pass `{ extract: true }` for
+  the pre-v0.9.0 behaviour. Pinned by
+  `test/image-inlining.test.ts`.
+- **Selector denylist (review finding 3, M2.C).** New
+  `DEFAULT_DENYLIST_SELECTORS` exported from
+  `src/providers/internal/turndown-config.ts`, plus a
+  `cleanHtml(html, { extraSelectors })` option. The default
+  provider threads a page-specific denylist (Wikipedia
+  donation banner, siteNotice, etc.) so a Wikipedia article
+  no longer starts with the donation banner. Pinned by
+  `test/denylist.test.ts`.
+- **Wikitable turndown rule (review finding 4, M2.D).**
+  Custom `wikitable` rule on `TurndownService` emits GFM
+  tables directly from the DOM, normalises the column
+  count, and escapes `|` characters in cell text. Pinned
+  by `test/table-wikitables.test.ts`.
+- **Un-escape brackets (review finding 5, M2.E).** New
+  `unescapeBrackets(markdown)` strips `\[` / `\]` outside
+  fenced code blocks, with special-casing for image syntax
+  (`\!\[alt\](url)`) so image references survive. Wired
+  into `fetchUrl` and `staticFetch` so Wikipedia footnote
+  references (`\[1\]`, `\[2\]`) read naturally. Pinned by
+  `test/markdown-unescape.test.ts`.
+- **Sticky `staticOnly` warning (review finding 7, M3.D).**
+  The `browserWarning` field on `WebfetchDetails` is set
+  only on the static-fallback path (`processedAs:
+  'fallback'`), not on the static pass-through
+  (`processedAs: 'static'`) or on binary downloads. The
+  warning is sticky: it surfaces in the user-facing
+  `## Fetch Result` header. Pinned by
+  `test/static-only-warning.test.ts`.
+
 ### Changed
 
 - **Research subagent transport: print-mode → JSON-RPC.** The

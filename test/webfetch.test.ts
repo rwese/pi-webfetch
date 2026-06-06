@@ -301,31 +301,31 @@ describe('extractEmbeddedImages', () => {
 		expect(result.tempFilePath).toBeUndefined();
 	});
 
-	it('replaces single image with reference', async () => {
+	it('replaces single image with reference (extract: true)', async () => {
 		const markdown = 'Text ![alt](https://example.com/img.png) more';
-		const result = await extractEmbeddedImages(markdown);
+		const result = await extractEmbeddedImages(markdown, { extract: true });
 		expect(result.content).toContain('![alt][ref-1]');
 		expect(result.content).not.toContain('![alt](https://example.com/img.png)');
 	});
 
-	it('replaces multiple images with numbered references', async () => {
+	it('replaces multiple images with numbered references (extract: true)', async () => {
 		const markdown = '![a](url1) text ![b](url2) text ![c](url3)';
-		const result = await extractEmbeddedImages(markdown);
+		const result = await extractEmbeddedImages(markdown, { extract: true });
 		expect(result.content).toContain('![a][ref-1]');
 		expect(result.content).toContain('![b][ref-2]');
 		expect(result.content).toContain('![c][ref-3]');
 		expect(result.tempFilePath).toBeDefined();
 	});
 
-	it('uses default alt text when none provided', async () => {
+	it('uses default alt text when none provided (extract: true)', async () => {
 		const markdown = 'Text ![](https://example.com/img.png) more';
-		const result = await extractEmbeddedImages(markdown);
+		const result = await extractEmbeddedImages(markdown, { extract: true });
 		expect(result.content).toContain('![Image1][ref-1]');
 	});
 
-	it('creates temp file with references', async () => {
+	it('creates temp file with references (extract: true)', async () => {
 		const markdown = '![logo](https://example.com/logo.png "Company Logo")';
-		const result = await extractEmbeddedImages(markdown);
+		const result = await extractEmbeddedImages(markdown, { extract: true });
 		expect(result.tempFilePath).toBeDefined();
 		expect(result.tempFilePath).toContain('webfetch-images');
 	});

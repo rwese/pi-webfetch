@@ -9,6 +9,16 @@ Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) an
 - **Binary files** → Downloaded to temp directory
 - **Auto-fallback** → Uses static fetch with warning if browser unavailable
 - **Hybrid extraction** → Markdown when HTML has good text ratio, text fallback otherwise
+- **Cache with TTL + content validation** → 1-hour default TTL;
+  cache writes are rejected if the rendered `<title>` or
+  `finalUrl` does not match the requested URL. See
+  `docs/cache.md` for the full layout, defaults, and
+  clear-cache flags.
+- **Per-process browser session + per-fetch tab** → Each
+  process owns its own `agent-browser` session
+  (`${hostname}:${pid}`); each fetch allocates a fresh tab
+  and closes it in `finally`. Two concurrent `webfetch`
+  processes on the same host never share state.
 - **Research mode with live progress** → When a `--query` is
   provided, the parent spawns a persistent `pi --mode rpc`
   subagent that streams text deltas and tool events back to
@@ -30,10 +40,13 @@ Run the package directly from npm:
 npx -y @rwese/pi-webfetch --help
 npx -y @rwese/pi-webfetch webfetch "https://example.com"
 npx -y @rwese/pi-webfetch webfetch "https://example.com" --query "What is the main topic?"
+npx -y @rwese/pi-webfetch webfetch "https://example.com" --cache-ttl 30000
 npx -y @rwese/pi-webfetch spa "https://reddit.com/r/example" --wait-for networkidle
 npx -y @rwese/pi-webfetch download "https://example.com/file.pdf"
 npx -y @rwese/pi-webfetch providers
 npx -y @rwese/pi-webfetch clear-cache --url "https://example.com"
+npx -y @rwese/pi-webfetch clear-cache --all
+npx -y @rwese/pi-webfetch clear-cache --older-than 7d --dry-run
 npx -y @rwese/pi-webfetch cache-stats --json
 ```
 
@@ -71,6 +84,9 @@ webfetch --url "https://github.com/user/repo/issues/123" --include-comments
   (3 min). Increase for large pages or complex queries; the subagent
   is killed with `Pi agent timed out after <ms>ms` if the budget is
   exhausted, and the resumable-session flow (see below) still applies.
+- `cache-ttl` - Per-call cache TTL override in milliseconds.
+  **Default: 3600000** (1 hour). Cached entries older than the TTL
+  are treated as misses and re-fetched.
 
 ### `webfetch-spa`
 
@@ -109,11 +125,13 @@ webfetch-providers
 
 ### `webfetch-clear-cache`
 
-Clear one cached URL or all cached content.
+Clear one cached URL, all entries, or entries older than a duration.
 
 ```
 webfetch-clear-cache --url "https://example.com"
-webfetch-clear-cache
+webfetch-clear-cache --all
+webfetch-clear-cache --older-than 7d
+webfetch-clear-cache --older-than 7d --dry-run
 ```
 
 ### `webfetch-cache-stats`
@@ -171,10 +189,21 @@ The MCP server exposes:
 
 1. Probes Content-Type via HEAD request
 2. Skips browser for binary types (PDF, ZIP, images, etc.)
-3. Tries `agent-browser` for HTML pages
-4. Extracts HTML → converts to markdown via turndown
+3. Tries `agent-browser` for HTML pages (real-browser, SPA
+   wait). Each fetch allocates a fresh `agent-browser` tab
+   and closes it in `finally`; the process owns its own
+   `AGENT_BROWSER_SESSION = ${hostname}:${pid}` so two
+   concurrent `webfetch` processes on the same host never
+   share state.
+4. Extracts HTML → converts to markdown via turndown. A
+   `<table class="wikitable">` gets the custom `wikitable`
+   rule so MediaWiki tables render as proper GFM tables;
+   `\[` / `\]` are un-escaped outside code blocks so
+   footnote-style references round-trip naturally; inline
+   `![alt](url)` images are kept as-is.
 5. Falls back to text extraction if HTML quality is poor
-6. Falls back to static fetch with warning if browser unavailable
+6. Falls back to static fetch with a sticky `browserWarning`
+   if browser unavailable
 
 For GitHub URLs, the `gh-cli` provider is preferred when it is available
 and authenticated. By default, issue and PR fetches return the issue/PR
@@ -184,6 +213,26 @@ PR review threads. When the option is off, a `> Tip:` discovery hint
 is appended to the markdown content and also surfaced via
 `details.githubHint` / `metadata.githubHint` so programmatic callers
 can prompt the user to opt in.
+
+## Cache
+
+The cache is a flat file store of JSON entries keyed by
+`(url, options hash)`. v0.9.0 (M1) added three guarantees:
+
+- **1-hour TTL** (configurable via `--cache-ttl <ms>` /
+  `cacheTtlMs` / `options.cacheTtlMs`). A stale entry is
+  treated as a miss and re-fetched.
+- **Content validation** — a `validateCacheEntry` pass
+  cross-checks the rendered `finalUrl` and `<title>` against
+  the requested URL. A mismatch rejects the cache write
+  with a warning (the original `FetchResult` flows through
+  unchanged).
+- **Per-process / per-tab browser isolation** — the
+  `BrowserManager` is per-process and the tab is per-fetch,
+  so a poisoned-cache race is no longer possible.
+
+See `docs/cache.md` for the full layout, defaults, and
+`--clear-cache` flags.
 
 ## Resuming a Failed Research Subagent
 

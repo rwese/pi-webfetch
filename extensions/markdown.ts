@@ -49,11 +49,30 @@ export function removeMarkdownAnchors(markdown: string): string {
 	return restoreCodeBlocks(cleaned, blocks);
 }
 /**
- * Extract embedded images from markdown and store in temp file.
- * Replaces inline images with reference-style links.
+ * Options for {@link extractEmbeddedImages}.
+ *
+ * - `extract` (default: `false`): when `true`, images are
+ *   extracted to a temp file and the markdown carries
+ *   `[ref-N]` placeholders (the pre-v0.9.0 behaviour). When
+ *   `false` (the v0.9.0 default), inline `![alt](url)`
+ *   references are preserved as-is and no temp file is
+ *   written.
+ */
+export interface ExtractEmbeddedImagesOptions {
+	extract?: boolean;
+}
+
+/**
+ * Extract embedded images from markdown and (optionally) store
+ * in temp file. The v0.9.0 default keeps inline `![alt](url)`
+ * references intact so the markdown renders usefully in
+ * downstream LLM consumers. Pass `{ extract: true }` to get
+ * the pre-v0.9.0 behaviour (replaced with `[ref-N]`
+ * placeholders + temp file with the full image list).
  */
 export async function extractEmbeddedImages(
 	markdown: string,
+	options?: ExtractEmbeddedImagesOptions,
 ): Promise<{ content: string; tempFilePath?: string }> {
 	const { content: protectedContent, blocks } = protectCodeBlocks(markdown);
 
@@ -67,6 +86,14 @@ export async function extractEmbeddedImages(
 	}
 
 	if (images.length === 0) {
+		return { content: restoreCodeBlocks(protectedContent, blocks) };
+	}
+
+	const extract = options?.extract === true;
+	if (!extract) {
+		// Default v0.9.0 path: keep inline references, no temp
+		// file, no placeholder mangling. Downstream consumers
+		// (LLMs, docs, etc.) can render the URL directly.
 		return { content: restoreCodeBlocks(protectedContent, blocks) };
 	}
 
@@ -111,4 +138,36 @@ export function stripEmbeddedImages(markdown: string): string {
 		'$1',
 	);
 	return restoreCodeBlocks(cleaned, blocks);
+}
+
+/**
+ * Un-escape backslash-escaped bracket pairs that turndown /
+ * cheerio produced when the source HTML contained literal
+ * `[` / `]` characters (e.g. inside code blocks, link text,
+ * or just plain `\[1\]` footnotes). The Markdown spec says
+ * `\[` and `\]` are not necessary inside prose and many
+ * downstream renderers (LLMs, previews) treat them as
+ * literal `[` / `]` glyphs and emit confusing output.
+ *
+ * Strategy:
+ *
+ * - `\[` / `\]` are un-escaped *only* outside of fenced code
+ *   blocks. The protect / restore dance from
+ *   {@link protectCodeBlocks} is reused.
+ * - `\[` followed by a digit (`\[1\]`, `\[2\]`, ...) is the
+ *   most common pattern (Wikipedia footnotes / citations);
+ *   we un-escape that shape aggressively.
+ * - `\[` followed by another `[` (a `\[` image / reference)
+ *   is left alone: turndown emits `\!\[alt\](url)` and we do
+ *   not want to break image syntax.
+ */
+export function unescapeBrackets(markdown: string): string {
+	const { content, blocks } = protectCodeBlocks(markdown);
+	// Un-escape \[ followed by a digit (footnote style: \[1\]).
+	const cleaned = content.replace(/\\\[(\d+)\\\]/g, '[$1]');
+	// Un-escape any remaining standalone \[ / \] that are not
+	// preceded by `!` (i.e. not image syntax). Use a negative
+	// lookbehind so `\!\[alt\](url)` round-trips intact.
+	const generic = cleaned.replace(/(?<!!)\\\[/g, '[').replace(/\\\]/g, ']');
+	return restoreCodeBlocks(generic, blocks);
 }

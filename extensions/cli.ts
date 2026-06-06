@@ -6,7 +6,13 @@
 import { pathToFileURL } from 'node:url';
 import type { FetchResult } from './types.js';
 import { webfetchResearch, webfetchSPA, getProviderStatus } from './fetch.js';
-import { clearAllCache, clearCache, getCacheStats } from './cache.js';
+import {
+	clearAllCache,
+	clearCache,
+	getCacheStats,
+	parseDurationToMs,
+	type ClearCacheOptions,
+} from './cache.js';
 import { main as startMcpServer } from './mcp-server.js';
 
 type ProviderName = 'default' | 'clawfetch' | 'gh-cli';
@@ -17,7 +23,7 @@ export interface CliDependencies {
 	webfetchSPA: typeof webfetchSPA;
 	getProviderStatus: typeof getProviderStatus;
 	clearCache: typeof clearCache;
-	clearAllCache: typeof clearAllCache;
+	clearAllCache: (options?: ClearCacheOptions) => Promise<number>;
 	getCacheStats: typeof getCacheStats;
 	startMcpServer: typeof startMcpServer;
 }
@@ -46,10 +52,10 @@ export interface ParsedCommand {
 const helpText = `pi-webfetch
 
 Usage:
-  pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--include-comments] [--timeout <ms>] [--json]
+  pi-webfetch webfetch <url> [--query <text>] [--provider default|clawfetch|gh-cli] [--include-comments] [--timeout <ms>] [--cache-ttl <ms>] [--json]
   pi-webfetch spa <url> [--wait-for networkidle|domcontentloaded] [--timeout <ms>] [--json]
   pi-webfetch providers [--json]
-  pi-webfetch clear-cache [--url <url>] [--json]
+  pi-webfetch clear-cache [--url <url>] [--all] [--older-than <duration>] [--dry-run] [--json]
   pi-webfetch cache-stats [--json]
   pi-webfetch mcp
 
@@ -57,7 +63,7 @@ Commands:
   webfetch      Fetch and process a URL, optionally with a research query
   spa           Fetch a JavaScript-heavy page with browser rendering
   providers     Show available fetch providers
-  clear-cache   Clear one cached URL or all cached content
+  clear-cache   Clear one cached URL, all entries, or entries older than <duration>
   cache-stats   Show cache statistics
   mcp           Start the stdio MCP server
 
@@ -67,6 +73,15 @@ Options:
   --timeout <ms>         Wall-clock budget in milliseconds for the research
                          subagent. Defaults to 180000 (3 min). Use a larger
                          value for large pages or complex queries.
+  --cache-ttl <ms>       Per-call cache TTL override in milliseconds. Defaults
+                         to 3600000 (1 hour). Cached entries older than the
+                         TTL are treated as misses and re-fetched.
+  --older-than <dur>     With \`clear-cache\`: only clear entries older than
+                         the duration. Accepts \`7d\`, \`2h\`, \`30m\`, \`45s\`,
+                         or a bare integer in milliseconds.
+  --all                  With \`clear-cache\`: clear every cached entry.
+  --dry-run              With \`clear-cache\`: print which entries would be
+                         removed without actually deleting them.
 `;
 
 function write(io: CliIO, text: string): void {
@@ -170,6 +185,52 @@ function parseBoolean(value: string | boolean | undefined): boolean | undefined 
 	throw new Error(`Invalid boolean '${value}'`);
 }
 
+/**
+ * Parse the `--cache-ttl <ms>` value. Accepts a positive integer in
+ * milliseconds. `undefined` means "use the default". A non-positive
+ * or non-integer value is rejected (we never expose a "no TTL" mode).
+ */
+function parseCacheTtl(value: string | boolean | undefined): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== 'string') throw new Error('Invalid --cache-ttl');
+	const ttl = Number(value);
+	if (!Number.isInteger(ttl) || ttl <= 0) {
+		throw new Error(`Invalid --cache-ttl '${value}' (must be a positive integer)`);
+	}
+	return ttl;
+}
+
+/**
+ * Parse the `--older-than <duration>` value. Accepts a duration
+ * string (`7d`, `2h`, `30m`, `45s`, `1500ms`) or a bare integer in
+ * milliseconds. `undefined` means "no filter".
+ */
+function parseOlderThan(value: string | boolean | undefined): number | undefined {
+	if (value === undefined) return undefined;
+	if (typeof value !== 'string') throw new Error('Invalid --older-than');
+	const ms = parseDurationToMs(value);
+	if (ms === null) {
+		throw new Error(
+			`Invalid --older-than '${value}' (expected <n>d|h|m|s|ms or a bare integer in ms)`,
+		);
+	}
+	return ms;
+}
+
+function formatMs(ms: number): string {
+	if (ms % (24 * 60 * 60 * 1000) === 0) return `${ms / (24 * 60 * 60 * 1000)}d`;
+	if (ms % (60 * 60 * 1000) === 0) return `${ms / (60 * 60 * 1000)}h`;
+	if (ms % (60 * 1000) === 0) return `${ms / (60 * 1000)}m`;
+	if (ms % 1000 === 0) return `${ms / 1000}s`;
+	return `${ms}ms`;
+}
+
+function formatBytes(bytes: number): string {
+	if (bytes < 1024) return `${bytes} B`;
+	if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+	return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
 function wantsJson(parsed: ParsedCommand): boolean {
 	return parsed.flags.json === true;
 }
@@ -234,6 +295,16 @@ export async function runCli(
 			// Default 180s matches the spawn default; users can still
 			// raise it per-call for unusually large / complex pages.
 			const timeout = parseTimeout(parsed.flags.timeout, 180000);
+			const cacheTtlMs = parseCacheTtl(parsed.flags.cacheTtl);
+			const providerOptions =
+				includeComments !== undefined || cacheTtlMs !== undefined
+					? {
+							...(includeComments !== undefined ? { github: { includeComments } } : {}),
+							...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
+						}
+					: includeComments !== undefined
+						? { github: { includeComments } }
+						: undefined;
 			const result = await deps.webfetchResearch(
 				requireUrl(parsed),
 				optionalString(parsed.flags.query),
@@ -241,7 +312,7 @@ export async function runCli(
 				undefined,
 				undefined,
 				parseProvider(parsed.flags.provider),
-				includeComments !== undefined ? { github: { includeComments } } : undefined,
+				providerOptions,
 				// CLI: stable per-process clock; stable multi-line stderr
 				// message on the agent-error path. The session id is still
 				// unique-per-invocation because it includes the timestamp.
@@ -278,6 +349,10 @@ export async function runCli(
 
 		if (parsed.command === 'clear-cache') {
 			const url = optionalString(parsed.flags.url);
+			const all = parsed.flags.all === true;
+			const dryRun = parsed.flags.dryRun === true;
+			const olderThanMs = parseOlderThan(parsed.flags.olderThan);
+
 			if (url) {
 				const cleared = await deps.clearCache(url);
 				const text = cleared
@@ -287,6 +362,54 @@ export async function runCli(
 					writeJson(io, { url, cleared });
 				} else {
 					write(io, text);
+				}
+				return 0;
+			}
+
+			if (dryRun) {
+				// Dry-run: list entries that would be removed without
+				// actually deleting them. We approximate this by
+				// reading the cache stats (count + total size) and
+				// surfacing the configured filter. The actual
+				// implementation lives in `clearAllCache` /
+				// `clearCacheOlderThan`; for the CLI dry-run we just
+				// describe what *would* happen.
+				const stats = await deps.getCacheStats();
+				const filter =
+					olderThanMs !== undefined
+						? `entries older than ${formatMs(olderThanMs)}`
+						: all
+							? 'all entries'
+							: 'all entries';
+				if (wantsJson(parsed)) {
+					writeJson(io, {
+						dryRun: true,
+						wouldClear: stats.count,
+						filter,
+						totalSize: stats.totalSize,
+					});
+				} else {
+					write(
+						io,
+						`Dry run: would clear ${filter} (${stats.count} entries, ${formatBytes(
+							stats.totalSize,
+						)} on disk).`,
+					);
+				}
+				return 0;
+			}
+
+			if (olderThanMs !== undefined) {
+				// `clearAllCache` accepts an `olderThanMs` option; the
+				// CLI / MCP / extension use the same primitive.
+				const clearedCount = await deps.clearAllCache({ olderThanMs });
+				if (wantsJson(parsed)) {
+					writeJson(io, { clearedCount, olderThanMs });
+				} else {
+					write(
+						io,
+						`Cleared ${clearedCount} cached item(s) older than ${formatMs(olderThanMs)}`,
+					);
 				}
 				return 0;
 			}

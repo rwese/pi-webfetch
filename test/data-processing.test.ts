@@ -42,7 +42,9 @@ describe('Test Data Processing', () => {
 			});
 
 			it('extractEmbeddedImages should create temp file with references', async () => {
-				const result = await extractEmbeddedImages(content);
+				// Use { extract: true } to get the pre-v0.9.0
+				// behaviour (placeholder + temp file).
+				const result = await extractEmbeddedImages(content, { extract: true });
 
 				// Count images outside code blocks (simple pattern)
 				const withoutCodeBlocks = content.replace(/```[\s\S]*?```/g, '');
@@ -140,7 +142,7 @@ describe('Individual Test File Validation', () => {
 
 		expect(externalImages && externalImages.length).toBeGreaterThan(0);
 
-		const result = await extractEmbeddedImages(content);
+		const result = await extractEmbeddedImages(content, { extract: true });
 		expect(result.tempFilePath).toBeDefined();
 
 		// Original images should be replaced with references
@@ -187,7 +189,7 @@ describe('Individual Test File Validation', () => {
 
 		// Process
 		const noAnchors = removeMarkdownAnchors(content);
-		const imageResult = await extractEmbeddedImages(noAnchors);
+		const imageResult = await extractEmbeddedImages(noAnchors, { extract: true });
 
 		// Should have reference images in content (outside code blocks)
 		const contentWithoutCodeBlocks = imageResult.content.replace(/```[\s\S]*?```/g, '');

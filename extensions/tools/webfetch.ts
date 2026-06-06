@@ -33,6 +33,13 @@ export const WEBFETCH_TOOL_PARAMS = Type.Object({
 				'Wall-clock budget in milliseconds for the research subagent (only used when `query` is set). Defaults to 180000 (3 min). Use a larger value for large pages or complex queries.',
 		}),
 	),
+	cacheTtlMs: Type.Optional(
+		Type.Integer({
+			minimum: 1,
+			description:
+				'Per-call cache TTL override in milliseconds. Defaults to 3600000 (1 hour). Cached entries older than the TTL are treated as misses and re-fetched.',
+		}),
+	),
 });
 
 /**
@@ -152,6 +159,15 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 			await new Promise((resolve) => setTimeout(resolve, 0));
 
 			// Phase 2: Fetch with detailed status updates
+			const providerOptions =
+				params.includeComments !== undefined || params.cacheTtlMs !== undefined
+					? {
+							...(params.includeComments !== undefined
+								? { github: { includeComments: params.includeComments } }
+								: {}),
+							...(params.cacheTtlMs !== undefined ? { cacheTtlMs: params.cacheTtlMs } : {}),
+						}
+					: undefined;
 			const result = await webfetchResearch(
 				params.url,
 				params.query,
@@ -171,9 +187,7 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 					streamingPhase: 'streaming',
 				},
 				undefined,
-				params.includeComments !== undefined
-					? { github: { includeComments: params.includeComments } }
-					: undefined,
+				providerOptions,
 				() => Date.now(),
 				// Resume hint notify: surface the resume command in the TUI
 				// status bar instead of the agent's context. One shot per

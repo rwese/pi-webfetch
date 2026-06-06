@@ -29,10 +29,17 @@ export {
 	cacheFetchResult,
 	getCachedResult,
 	buildCacheEntry,
+	validateCacheEntry,
+	extractHtmlTitle,
+	type CacheFetchOptions,
 } from './cache-service.js';
 
 // Static fetch
-export { staticFetch, handleBinary } from './static-fetch.js';
+export {
+	staticFetch,
+	handleBinary,
+	__resetStaticOnlyWarningForTest,
+} from './static-fetch.js';
 
 // Header building
 export { buildFetchHeader } from './header-builder.js';
