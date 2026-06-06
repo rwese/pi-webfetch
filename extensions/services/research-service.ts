@@ -7,6 +7,7 @@
 import type { WebfetchDetails, FetchResult } from '../types.js';
 import type { AgentToolUpdateCallback } from '@mariozechner/pi-coding-agent';
 import { spawnPiAgent, type SpawnPiAgentResult } from '../pi-agent.js';
+import type { PiRpcToolEvent } from '../pi-rpc-client.js';
 import type { FetchPhase } from '../fetch-phases.js';
 import { fetchUrl, type ProviderFetchOptions } from './fetch-service.js';
 import {
@@ -67,6 +68,43 @@ function sendStreamingUpdate(config: StreamingConfig, content: string, phase: Fe
  */
 function yieldToEventLoop(): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+/**
+ * Format a subagent tool event as a short human-readable content
+ * line. Used by the streaming path to render live progress; the
+ * non-streaming path drops the line (the result body is the
+ * subagent's final text, not the intermediate tool calls).
+ *
+ * Examples:
+ *   `📖 reading /tmp/.../input.md`
+ *   `🔧 bash: ls /tmp/...`
+ *   `💭 thinking: webfetch`
+ */
+function formatToolEvent(event: PiRpcToolEvent, inputFiles: ResearchInputFiles): string {
+	const args = (event.args ?? {}) as Record<string, unknown>;
+	switch (event.phase) {
+		case 'reading': {
+			const path =
+				typeof args['path'] === 'string'
+					? (args['path'] as string)
+					: event.name === 'read' && inputFiles.inputFile
+						? inputFiles.inputFile
+						: '';
+			const suffix = path ? ` ${path}` : '';
+			return `📖 ${event.name}${suffix}`;
+		}
+		case 'executing': {
+			const command = typeof args['command'] === 'string' ? (args['command'] as string) : '';
+			const suffix = command ? `: ${command}` : '';
+			return `🔧 ${event.name}${suffix}`;
+		}
+		case 'thinking':
+		default: {
+			const argsText = Object.keys(args).length > 0 ? `: ${event.name}` : '';
+			return `💭 ${event.name}${argsText}`;
+		}
+	}
 }
 
 /**
@@ -216,12 +254,23 @@ export async function webfetchResearch(
 			sendStreamingUpdate(config, header + '📝 Generating response...', config.initialPhase);
 			await yieldToEventLoop();
 
-			// Stream chunks from pi agent directly to onUpdate
+			// Stream chunks from pi agent directly to onUpdate.
+			// Tool events from the JSON-RPC subagent are mapped to
+			// the parent-friendly `phase` union (`'reading'` /
+			// `'executing'` / `'thinking'`) with a short
+			// human-readable content line.
 			const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
 				onChunk: (chunk) => {
 					config.callback?.({
 						content: [{ type: 'text', text: chunk }],
 						details: { phase: config.streamingPhase, url, streamed: true },
+					});
+				},
+				onToolCall: (event: PiRpcToolEvent) => {
+					const toolContent = formatToolEvent(event, inputFiles);
+					config.callback?.({
+						content: [{ type: 'text', text: toolContent }],
+						details: { phase: event.phase, url, streamed: true },
 					});
 				},
 				sessionId,
@@ -252,6 +301,15 @@ export async function webfetchResearch(
 
 		// No streaming available, use regular behavior
 		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
+			onToolCall: (event: PiRpcToolEvent) => {
+				// No streaming config: just log a debug-level hint
+				// so the tool call is observable. The CLI / MCP /
+				// tool surface can layer its own reporting on top.
+				// (We deliberately do not surface the tool call in
+				// the result body — the parent rendered the streaming
+				// path above; the non-streaming path is a fallback.)
+				void formatToolEvent(event, inputFiles);
+			},
 			sessionId,
 			sessionName,
 			url,

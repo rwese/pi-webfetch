@@ -49,13 +49,13 @@ Plan: [PLAN_PI_JSONRPC.md](./docs/plans/PLAN_PI_JSONRPC.md) (Switch the research
 
 ## Step 3 — Thread `onToolCall` through `webfetchResearch`
 
-- [ ] Add `'reading'` and `'executing'` to the `FetchPhase` union in `extensions/fetch-phases.ts` with friendly labels (`'📖 Reading input…'` / `'🔧 Running command…'`). Update both `FETCH_PHASE_LABELS` and the inline map in `getCommandPhaseLabel`.
-- [ ] Thread `onToolCall` through `extensions/services/research-service.ts::webfetchResearch` to `spawnPiAgent`. Map the events to streaming updates with `phase: 'reading' | 'executing' | 'thinking'` and a human-readable content string (`📖 reading <path>` / `🔧 bash: <command>`).
-- [ ] Extend `test/webfetch-research.test.ts`:
+- [x] Add `'reading'` and `'executing'` to the `FetchPhase` union in `extensions/fetch-phases.ts` with friendly labels (`'📖 Reading input…'` / `'🔧 Running command…'`). Update both `FETCH_PHASE_LABELS` and the inline map in `getCommandPhaseLabel`.
+- [x] Thread `onToolCall` through `extensions/services/research-service.ts::webfetchResearch` to `spawnPiAgent`. Map the events to streaming updates with `phase: 'reading' | 'executing' | 'thinking'` and a human-readable content string (`📖 reading <path>` / `🔧 bash: <command>`).
+- [x] Extend `test/webfetch-research.test.ts`:
   1. When the subagent invokes `read`, the streaming `onUpdate` reflects `phase: 'reading'`.
   2. When the subagent invokes `bash`, the streaming `onUpdate` reflects `phase: 'executing'`.
   3. The `## Fetch Result (Agent Error)` fallback body is byte-equal to a fixture (pinned regression from `PLAN_AGENT_ERROR_RESUME.md`).
-- [ ] Verify: `npm test -- --run test/webfetch-research.test.ts` green.
+- [x] Verify: `npm test -- --run test/webfetch-research.test.ts` green.
 
 ## Step 4 — Docs
 

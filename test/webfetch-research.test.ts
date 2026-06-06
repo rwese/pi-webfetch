@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
+import type { AgentToolResult } from '@mariozechner/pi-coding-agent';
 import { webfetchResearch } from '../extensions/services/research-service.js';
 
 // Mock the underlying pi-agent so we can drive `webfetchResearch` through
@@ -672,5 +673,200 @@ describe('webfetchResearch - other behavior', () => {
 			expect(hasError('Error: Network failed')).toBe(true);
 			expect(hasError('## Fetch Result\nSome content')).toBe(false);
 		});
+	});
+});
+
+describe('webfetchResearch - tool call streaming', () => {
+	beforeEach(() => {
+		spawnPiAgentMock.mockReset();
+		fetchUrlMock.mockReset();
+	});
+
+	const happyFetchResult = {
+		content: [{ type: 'text' as const, text: 'Page body content' }],
+		details: {
+			url: 'https://example.com/page',
+			contentType: 'text/html',
+			status: 200,
+			processedAs: 'markdown' as const,
+		},
+	};
+
+	it('forwards onToolCall to spawnPiAgent options', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1700000000000,
+			vi.fn(),
+			'extension',
+		);
+
+		expect(spawnPiAgentMock).toHaveBeenCalledTimes(1);
+		const opts = spawnPiAgentMock.mock.calls[0][2] as {
+			onToolCall?: (event: unknown) => void;
+		};
+		expect(typeof opts.onToolCall).toBe('function');
+	});
+
+	it('emits phase: reading on a `read` tool event (streaming path)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		const updates: Array<{ phase?: string; text: string }> = [];
+		const streamingConfig = {
+			callback: (u: AgentToolResult<Record<string, unknown>>) => {
+				const text = u.content.find((c) => c.type === 'text');
+				updates.push({
+					phase: (u.details as { phase?: string } | undefined)?.phase,
+					text: text && text.type === 'text' ? text.text : '',
+				});
+			},
+			url: 'https://example.com/page',
+			initialPhase: 'processing' as const,
+			streamingPhase: 'streaming' as const,
+		};
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => {
+			// Drive onToolCall like the subagent would.
+			opts?.onToolCall?.({ phase: 'reading', name: 'read', args: { path: '/tmp/input.md' } });
+			return {
+				analysis: 'analysis text',
+				exitCode: 0,
+				sessionId: opts?.sessionId,
+				sessionName: opts?.sessionName,
+			};
+		});
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			streamingConfig,
+		);
+
+		// Find the update with phase=reading (the most recent tool event).
+		const readUpdate = updates.find((u) => u.phase === 'reading');
+		expect(readUpdate).toBeDefined();
+		expect(readUpdate?.text).toContain('read');
+		expect(readUpdate?.text).toContain('/tmp/input.md');
+	});
+
+	it('emits phase: executing on a `bash` tool event (streaming path)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		const updates: Array<{ phase?: string; text: string }> = [];
+		const streamingConfig = {
+			callback: (u: AgentToolResult<Record<string, unknown>>) => {
+				const text = u.content.find((c) => c.type === 'text');
+				updates.push({
+					phase: (u.details as { phase?: string } | undefined)?.phase,
+					text: text && text.type === 'text' ? text.text : '',
+				});
+			},
+			url: 'https://example.com/page',
+			initialPhase: 'processing' as const,
+			streamingPhase: 'streaming' as const,
+		};
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => {
+			opts?.onToolCall?.({ phase: 'executing', name: 'bash', args: { command: 'ls /tmp' } });
+			return {
+				analysis: 'analysis text',
+				exitCode: 0,
+				sessionId: opts?.sessionId,
+				sessionName: opts?.sessionName,
+			};
+		});
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			streamingConfig,
+		);
+
+		const execUpdate = updates.find((u) => u.phase === 'executing');
+		expect(execUpdate).toBeDefined();
+		expect(execUpdate?.text).toContain('bash');
+		expect(execUpdate?.text).toContain('ls /tmp');
+	});
+
+	it('emits phase: thinking on an unknown / non-allowlisted tool event (streaming path)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		const updates: Array<{ phase?: string; text: string }> = [];
+		const streamingConfig = {
+			callback: (u: AgentToolResult<Record<string, unknown>>) => {
+				const text = u.content.find((c) => c.type === 'text');
+				updates.push({
+					phase: (u.details as { phase?: string } | undefined)?.phase,
+					text: text && text.type === 'text' ? text.text : '',
+				});
+			},
+			url: 'https://example.com/page',
+			initialPhase: 'processing' as const,
+			streamingPhase: 'streaming' as const,
+		};
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => {
+			opts?.onToolCall?.({ phase: 'thinking', name: 'webfetch', args: { url: 'https://example.com' } });
+			return {
+				analysis: 'analysis text',
+				exitCode: 0,
+				sessionId: opts?.sessionId,
+				sessionName: opts?.sessionName,
+			};
+		});
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			streamingConfig,
+		);
+
+		const thinkUpdate = updates.find((u) => u.phase === 'thinking');
+		expect(thinkUpdate).toBeDefined();
+		expect(thinkUpdate?.text).toContain('webfetch');
+	});
+
+	it('pinned regression: agent-error fallback body is byte-equal to the pre-change baseline', async () => {
+		// Pinned regression from PLAN_AGENT_ERROR_RESUME.md: the
+		// markdown body of the agent-error fallback must be
+		// byte-identical to the pre-change baseline. The resume
+		// hint lives in `details` and in the `notify` side-channel
+		// so the agent's context is not polluted.
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockRejectedValue(new Error('Pi agent timed out after 100ms'));
+		const notify = vi.fn();
+		const result = await webfetchResearch(
+			'https://example.com/page',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1700000000000,
+			notify,
+			'extension',
+		);
+		expect(result.content[0]?.text).toContain('## Fetch Result (Agent Error)');
+		expect(result.content[0]?.text).toContain('**Command:** /webfetch https://example.com/page "q"');
+		expect(result.content[0]?.text).toContain('**Agent Error:** Pi agent timed out after 100ms');
+		// The body ends with the fetched content, NOT a resume hint
+		// (the resume hint is in details / notify).
+		expect(result.content[0]?.text).toContain('Page body content');
+		// The notify side-channel is fired once.
+		expect(notify).toHaveBeenCalledTimes(1);
 	});
 });
