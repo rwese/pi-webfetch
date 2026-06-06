@@ -2,12 +2,12 @@
 
 ## Current Status
 
-- Date: 2026-05-11.
-- Package: `@rwese/pi-webfetch` `0.2.1`, ESM TypeScript.
+- Date: 2026-06-06.
+- Package: `@rwese/pi-webfetch` `0.8.0`, ESM TypeScript.
 - Codex MCP support exists in `.codex-plugin/plugin.json`, `.mcp.json`, `extensions/mcp-server.ts`, and `extensions/mcp-tools.ts`.
 - Direct CLI exists in `extensions/cli.ts`; package bin is `dist/extensions/cli.js`.
 - Local Codex startup issue fixed outside the repo by launching `node /Users/wese/Repos/github.com/rwese/pi-webfetch/dist/extensions/cli.js mcp` instead of spawning `extensions/mcp-server.ts` directly.
-- Last focused verification: `npm test -- --run test/cli.test.ts test/mcp-tools.test.ts` passed, 2 files and 13 tests.
+- Last focused verification: `npm run validate` clean, 26 test files and 422 tests.
 
 ## Structure
 
