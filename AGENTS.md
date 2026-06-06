@@ -73,6 +73,21 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Markdown post-processing removes auto anchors, extracts embedded images to temp files, and preserves code blocks/tables.
 - Research mode fetches content, spawns a pi subprocess for analysis, and falls back to fetched content if analysis fails. The spawn default budget is `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`, 180000ms = 3 min); the CLI / MCP / pi tool each expose a `timeout` knob to override per call.
 - Research mode writes the fetched content to a session-keyed work dir (`<tmpdir>/pi-webfetch-research/<sessionId>/input.md`, plus `input_raw.<ext>` when the provider surfaces raw content) and threads the absolute paths into the subagent's spawn options. The prompt is lean: it surfaces the URL, the parent's cwd, the session name, and the file paths; the subagent `read`s / `grep`s the content on demand. The work dir / file paths are returned on `WebfetchDetails` (`workDir`, `inputFile`, `inputRawFile`) on both the success and the agent-error paths.
+- **JSON-RPC transport for the research subagent.** The subagent
+  is driven as a real, named, persistent `pi --mode rpc` session
+  via the thin wrapper in `extensions/pi-rpc-client.ts` (see
+  `docs/plans/PI_RPC_NOTES.md` for the protocol quirks). The
+  wrapper coalesces `text_delta` events to a 16ms flush cadence
+  (one frame at 60fps), auto-dismisses `extension_ui_request`
+  events (default `true`), owns the wall-clock `agent_end` timeout
+  with a SIGTERM → SIGKILL cascade via `stop()`, and surfaces
+  `tool_execution_start` events to the parent via an `onToolCall`
+  callback. Tool names map to a parent-friendly phase union
+  (`read`/`grep`/`find`/`ls` → `reading`, `bash` → `executing`,
+  everything else → `thinking`). `SpawnPiAgentResult.sessionId`
+  / `sessionName` are sourced from the live `get_state` response,
+  not the pre-computed id, so the resume command always points at
+  the actual spawned subagent.
 - Binary content is downloaded to temp files and not analyzed.
 - Agent-error resume flow: research mode spawns the subagent as a real, named, persistent pi session (`--session-id <id>` / `--name <name>`) so the user can `pi --session <id>` into the failed transcript. On the agent-error path, the in-content fallback stays byte-identical to the pre-change baseline; the resume hint lives in `WebfetchDetails.subagentSessionId` / `subagentSessionName` / `resumeCommand` and a side-channel `notify` (TUI notify on the extension, stderr on the CLI, `_meta.details.notify` on the MCP). See `docs/plans/PLAN_AGENT_ERROR_RESUME.md` for the full design.
 

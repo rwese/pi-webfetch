@@ -5,6 +5,14 @@ reviewed: 2026-06-05
 notes: 'Approved 2026-06-05; implementation not yet started. See ../TODO.md for the active step list.'
 ---
 
+> **Related:** the research subagent transport was switched from
+> print-mode (`-p <prompt>`) to JSON-RPC (`pi --mode rpc`) in
+> `PLAN_PI_JSONRPC.md`. The resume design here is preserved
+> byte-for-byte; the wrapper just provides a different way to
+> spawn the subagent and the live `get_state().sessionId` is
+> surfaced as the source of truth for the resume command. See
+> `PI_RPC_NOTES.md` for the protocol details.
+
 # Plan: Agent-Error Details & Subagent Session Resume
 
 ## Context

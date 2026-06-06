@@ -5,6 +5,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Research subagent transport: print-mode → JSON-RPC.** The
+  research subagent is now driven as a real, named, persistent
+  `pi --mode rpc` session instead of the previous `-p <prompt>`
+  print-mode spawn. The wrapper is `extensions/pi-rpc-client.ts`
+  (see `docs/plans/PI_RPC_NOTES.md` for the protocol quirks).
+  No behavior change for callers — just a new live-progress UX:
+  text deltas stream back to the parent (debounced to one frame
+  at 60fps), tool events map to parent-friendly phases
+  (`read`/`grep`/`find`/`ls` → `reading`, `bash` → `executing`,
+  everything else → `thinking`).
+
 ## [0.8.0] - 2026-06-06
 
 ### Added

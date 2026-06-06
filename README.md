@@ -9,6 +9,14 @@ Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) an
 - **Binary files** → Downloaded to temp directory
 - **Auto-fallback** → Uses static fetch with warning if browser unavailable
 - **Hybrid extraction** → Markdown when HTML has good text ratio, text fallback otherwise
+- **Research mode with live progress** → When a `--query` is
+  provided, the parent spawns a persistent `pi --mode rpc`
+  subagent that streams text deltas and tool events back to
+  the parent so the user sees live progress (e.g. `📖 reading
+  <path>`, `🔧 bash: <command>`). The subagent is a real,
+  named, persistent session — on failure the user can
+  `pi --session <id>` into the failed transcript. See
+  `docs/plans/PI_RPC_NOTES.md` for the protocol details.
 
 ## Tools
 

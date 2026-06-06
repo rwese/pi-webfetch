@@ -59,16 +59,16 @@ Plan: [PLAN_PI_JSONRPC.md](./docs/plans/PLAN_PI_JSONRPC.md) (Switch the research
 
 ## Step 4 — Docs
 
-- [ ] Create `docs/plans/PI_RPC_NOTES.md` covering protocol quirks:
+- [x] Create `docs/plans/PI_RPC_NOTES.md` covering protocol quirks:
   - LF-only JSONL framing (why we use `attachJsonlLineReader`, not `node:readline`).
   - `extension_ui_request` auto-dismiss policy (default `true`, opt-out via wrapper option).
   - Spawn `pi` directly (not `node dist/cli.js`) for cold-start cost.
   - `getState()` is the source of truth for the live `sessionId` / `sessionName` on the result.
   - Single-path timeout (wrapper-owned `agent_end` waiter, SIGTERM → SIGKILL cascade).
-- [ ] Add a `CHANGELOG.md` entry under "Changed" describing the transport switch and the new live-progress UX.
-- [ ] Update `README.md`: one short paragraph on live feedback (no behavior change for callers, just a UX note).
-- [ ] Update `AGENTS.md` "Architecture Notes" with one paragraph on the JSON-RPC transport and the new `onToolCall` callback.
-- [ ] Add a one-line cross-reference in `docs/plans/PLAN_AGENT_ERROR_RESUME.md` pointing at the new plan.
+- [x] Add a `CHANGELOG.md` entry under "Changed" describing the transport switch and the new live-progress UX.
+- [x] Update `README.md`: one short paragraph on live feedback (no behavior change for callers, just a UX note).
+- [x] Update `AGENTS.md` "Architecture Notes" with one paragraph on the JSON-RPC transport and the new `onToolCall` callback.
+- [x] Add a one-line cross-reference in `docs/plans/PLAN_AGENT_ERROR_RESUME.md` pointing at the new plan.
 
 ## Step 5 — Polish
 
