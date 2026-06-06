@@ -45,6 +45,30 @@ export interface SpawnPiAgentOptions {
 	 * also set.
 	 */
 	sessionName?: string;
+	/**
+	 * URL the content was fetched from. Surfaced in the prompt so
+	 * the subagent can re-look-up additional pages or attribute
+	 * quotes / facts back to the source. Optional; the prompt
+	 * omits the `URL:` line when not set.
+	 */
+	url?: string;
+	/**
+	 * Absolute path to the markdown input file (`input.md`).
+	 * The prompt references this path; the subagent uses its
+	 * `read` tool to load the content on demand. Optional; when
+	 * not set, the prompt's `Input (markdown):` line is omitted
+	 * and the prompt has no in-content payload (the subagent
+	 * must rely on its own tools to find content).
+	 */
+	inputFile?: string;
+	/**
+	 * Absolute path to the raw input file (`input_raw.<ext>`).
+	 * The prompt references this path; the subagent can grep
+	 * the original markup when the markdown conversion drops
+	 * something. Optional; when not set, the prompt shows
+	 * `Input (raw): (not available)`.
+	 */
+	inputRawFile?: string;
 }
 
 /**
@@ -149,42 +173,89 @@ function resolveSkillPaths(skillNames: string[]): string[] {
 }
 
 /**
- * Build the research prompt with context and instructions
+ * Inputs for {@link buildResearchPrompt}. The content itself is NOT
+ * inlined in the prompt; the prompt references the file paths so
+ * the LLM sees a small, focused system message and `read`s the
+ * content on demand. The caller is responsible for writing the
+ * files to `inputFile` / `inputRawFile` before the spawn.
  */
-function buildResearchPrompt(query: string, content: string): string {
+export interface ResearchPromptInput {
+	/** The research question / analysis request. */
+	query: string;
+	/** URL the content was fetched from. Surfaced for further lookups. */
+	url?: string;
+	/**
+	 * Subagent's working directory (inherited from the parent by
+	 * default). Surfaced so the subagent knows where it is running
+	 * and can resolve relative paths.
+	 */
+	cwd?: string;
+	/** Human-readable session name (visible in `pi -r`). */
+	sessionName?: string;
+	/** Persistent subagent session id. */
+	sessionId?: string;
+	/** Absolute path to the markdown input file (`input.md`). */
+	inputFile?: string;
+	/** Absolute path to the raw input file (`input_raw.<ext>`). */
+	inputRawFile?: string;
+}
+
+/**
+ * Build the research prompt. The prompt is intentionally lean: it
+ * surfaces the URL, the cwd, the session name, and the file paths
+ * to the input files, but inlines none of the content. The
+ * subagent uses its `read` / `grep` tools to load the content on
+ * demand, which keeps the LLM context small and makes the prompt
+ * stable across very different page sizes.
+ *
+ * The instructions section is short and query-focused: the goal is
+ * to answer the query, not to produce a generic analysis. Generic
+ * boilerplate ("provide a thorough, well-structured response")
+ * tends to push the subagent toward verbose output that buries
+ * the actual answer.
+ */
+export function buildResearchPrompt(input: ResearchPromptInput): string {
+	const { query, url, cwd, sessionName, sessionId, inputFile, inputRawFile } = input;
+
+	const contextLines: string[] = [];
+	if (url) contextLines.push(`URL: ${url}`);
+	if (cwd) contextLines.push(`CWD: ${cwd}`);
+	if (sessionName) contextLines.push(`Session: ${sessionName}${sessionId ? ` (id: ${sessionId})` : ''}`);
+	if (inputFile) contextLines.push(`Input (markdown): ${inputFile}`);
+	contextLines.push(
+		`Input (raw): ${inputRawFile ?? '(not available)'}`,
+	);
+
 	return `# Research Query
+
+${contextLines.join('\n')}
+
+## Query
 
 ${query}
 
----
-
-## Content to Analyze
-
-${content}
-
----
-
 ## Instructions
 
-- Analyze the content above in relation to the research query
-- Use available tools (bash, grep, read) to search within the content if needed
-- If you need to fetch additional pages for context, use bash to call curl or webfetch
-- Provide a thorough, well-structured response
-- If searching for specific items (like "boot.img PQ3A.190801.002"), use grep/bash to search within the content
-- Provide full links to found resources in footnotes with a short description
+Read the input file(s) above and answer the query. Be concise and direct; do not pad with generic analysis.
 
-## Available Tools
+- Use \`read <inputFile>\` to load the markdown.
+- If a raw input is available, use \`read <inputRawFile>\` to grep the original markup (the markdown conversion sometimes drops metadata, hidden JSON, or attribute values).
+- Use \`grep\` / \`bash\` to search within the input files.
+- If the query asks for specific items, find them in the input or fetch them with \`bash\` + \`curl\` / \`webfetch\`.
+- If the query asks for endpoints or URLs, list them with short descriptions.
+- If the query asks for a summary, summarize - do not enumerate.
 
-- **read** - Read files or content sections
-- **grep** - Search within text content (use bash with grep for large content)
-- **find** - Find files in the filesystem
-- **ls** - List directory contents
-- **bash** - Execute shell commands (curl, grep, etc.)
+## Tools
 
-## Available Skills
+read, grep, find, ls, bash
 
-- **agent-browser** - For browser automation if interaction is needed
-- **planning** - For structured analysis approach
+## Skills
+
+agent-browser (browser automation), planning (structured analysis)
+
+## Output
+
+Write your final answer below this line. Stay focused on the query.
 
 ---
 `;
@@ -223,6 +294,15 @@ export async function spawnPiAgent(
 		noExtensions = false,
 		sessionId,
 		sessionName,
+		// Inputs for the lean prompt. `url`, `inputFile`, `inputRawFile`
+		// are surfaced in the prompt so the subagent can `read` /
+		// `grep` the content on demand instead of receiving it inline.
+		// `content` is accepted for back-compat with the previous
+		// signature but is NOT inlined in the prompt when the new
+		// fields are present; the prompt references the file paths.
+		url,
+		inputFile,
+		inputRawFile,
 	} = options;
 
 	// Dynamic import for better testability
@@ -234,9 +314,27 @@ export async function spawnPiAgent(
 		// Build args array
 		const args: string[] = [];
 
-		// Build the research prompt
-		const prompt = buildResearchPrompt(query, content);
+		// Build the research prompt. The prompt is lean: it surfaces
+		// URL, cwd, session name, and the file paths to the input
+		// files. The subagent `read`s the content on demand, so the
+		// LLM context stays small and the prompt is stable across
+		// very different page sizes.
+		const prompt = buildResearchPrompt({
+			query,
+			url,
+			cwd: cwdOption,
+			sessionId,
+			sessionName,
+			inputFile,
+			inputRawFile,
+		});
 		args.push('-p', prompt);
+		// `content` is intentionally unused in the prompt body when
+		// `inputFile` is provided (the new lean path). We still
+		// accept the argument so older call sites that pass
+		// `(content, query)` keep compiling; the unused-variable
+		// eslint rule is satisfied by the explicit `void` below.
+		void content;
 
 		// Add skills
 		if (skills.length > 0) {

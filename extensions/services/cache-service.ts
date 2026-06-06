@@ -31,6 +31,13 @@ export function buildCacheEntry(result: FetchResult): {
 	provider: string | undefined;
 	extractionMethod: string | undefined;
 	cachedAt: number;
+	// Persist the raw payload alongside the processed content so a
+	// research subagent that hits the cache still has the original
+	// HTML / text available to write to `input_raw.<ext>`. These
+	// mirror `WebfetchDetails.rawContent` / `rawContentType`; we
+	// pass them through verbatim when the provider exposed them.
+	rawContent?: string;
+	rawContentType?: string | null;
 } | null {
 	const url = result.details.url;
 	const textContent = result.content[0]?.text;
@@ -44,6 +51,12 @@ export function buildCacheEntry(result: FetchResult): {
 		provider: result.details.provider,
 		extractionMethod: result.details.extractionMethod,
 		cachedAt: Date.now(),
+		...(result.details.rawContent !== undefined
+			? { rawContent: result.details.rawContent }
+			: {}),
+		...(result.details.rawContentType !== undefined
+			? { rawContentType: result.details.rawContentType }
+			: {}),
 	};
 }
 
@@ -91,6 +104,13 @@ export async function getCachedResult(
 		extractionMethod: cached.extractionMethod,
 		cached: true,
 		cacheAge,
+		// Forward the persisted raw payload (if any) so the research
+		// service can still write `input_raw.<ext>` when the fetch
+		// was served from cache.
+		...(cached.rawContent !== undefined ? { rawContent: cached.rawContent } : {}),
+		...(cached.rawContentType !== undefined
+			? { rawContentType: cached.rawContentType }
+			: {}),
 	};
 
 	// Append cache footer to content

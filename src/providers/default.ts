@@ -123,6 +123,15 @@ export class DefaultProvider implements WebfetchProvider {
 
 			return {
 				content,
+				// Surface the raw HTML so the research service can
+				// write it to `input_raw.html` in the session work
+				// dir. The subagent can grep the original markup
+				// when the markdown conversion drops something
+				// (e.g. metadata inside a `<script>` or `<meta>`
+				// tag, or attribute values lost during
+				// cheerio/turndown).
+				rawContent: htmlResult.html,
+				rawContentType: 'text/html',
 				metadata: {
 					title: extractTitle(htmlResult.html),
 				},

@@ -8,6 +8,7 @@ import {
 } from './helpers/fake-pi-process';
 import {
 	DEFAULT_PI_AGENT_TIMEOUT_MS,
+	buildResearchPrompt,
 	PiAgentError,
 	spawnPiAgent,
 	isPiAvailable,
@@ -375,6 +376,104 @@ describe('spawnPiAgent', () => {
 		expect(result.sessionName).toBe('webfetch-research: example.com');
 		expect(result.analysis).toBe('Result');
 		expect(result.exitCode).toBe(0);
+	});
+});
+
+describe('buildResearchPrompt', () => {
+	it('surfaces URL, cwd, session name, and input file paths', () => {
+		const prompt = buildResearchPrompt({
+			query: 'What is the API endpoint?',
+			url: 'https://example.com/docs',
+			cwd: '/Users/wese/project',
+			sessionId: 'abc123',
+			sessionName: 'webfetch-research: example.com',
+			inputFile: '/tmp/pi-webfetch-research/abc123/input.md',
+			inputRawFile: '/tmp/pi-webfetch-research/abc123/input_raw.html',
+		});
+
+		expect(prompt).toContain('URL: https://example.com/docs');
+		expect(prompt).toContain('CWD: /Users/wese/project');
+		expect(prompt).toContain('Session: webfetch-research: example.com (id: abc123)');
+		expect(prompt).toContain('Input (markdown): /tmp/pi-webfetch-research/abc123/input.md');
+		expect(prompt).toContain('Input (raw): /tmp/pi-webfetch-research/abc123/input_raw.html');
+		expect(prompt).toContain('What is the API endpoint?');
+	});
+
+	it('marks raw input as not available when not provided', () => {
+		const prompt = buildResearchPrompt({
+			query: 'q',
+			inputFile: '/tmp/input.md',
+		});
+
+		expect(prompt).toContain('Input (raw): (not available)');
+	});
+
+	it('omits the URL line when no URL is provided', () => {
+		const prompt = buildResearchPrompt({
+			query: 'q',
+			inputFile: '/tmp/input.md',
+		});
+
+		expect(prompt).not.toContain('URL:');
+	});
+
+	it('does not inline the markdown content in the prompt', () => {
+		// Lean-prompt contract: the prompt references the file, the
+		// subagent `read`s it. Inlining would bloat the LLM context
+		// and bypass the work-dir layout.
+		const prompt = buildResearchPrompt({
+			query: 'q',
+			inputFile: '/tmp/input.md',
+		});
+
+		expect(prompt).not.toContain('## Content to Analyze');
+	});
+
+	it('focuses the instructions on fulfilling the query', () => {
+		const prompt = buildResearchPrompt({
+			query: 'q',
+			inputFile: '/tmp/input.md',
+		});
+
+		// Query-focused phrasing: "answer the query", "Stay focused".
+		expect(prompt).toContain('answer the query');
+		expect(prompt).toContain('Stay focused on the query');
+		// Anti-pattern from the old prompt: generic "thorough, well-structured".
+		expect(prompt).not.toContain('thorough, well-structured response');
+	});
+});
+
+describe('spawnPiAgent - lean prompt', () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+	});
+
+	it('threads url / inputFile / inputRawFile into the prompt body', async () => {
+		const fake = fakePiSuccess('Result');
+
+		const { spawn } = await import('node:child_process');
+		vi.mocked(spawn).mockReturnValue(fake as any);
+
+		await spawnPiAgent('Content', 'Query', {
+			url: 'https://example.com/page',
+			inputFile: '/tmp/input.md',
+			inputRawFile: '/tmp/input_raw.html',
+		});
+
+		// The `-p` flag is followed by the prompt string. We pull
+		// that value out of the argv and assert on the new lean
+		// fields surface in it.
+		const call = vi.mocked(spawn).mock.calls[0];
+		const args = call[1] as string[];
+		const pIndex = args.indexOf('-p');
+		expect(pIndex).toBeGreaterThanOrEqual(0);
+		const prompt = args[pIndex + 1];
+
+		expect(prompt).toContain('URL: https://example.com/page');
+		expect(prompt).toContain('Input (markdown): /tmp/input.md');
+		expect(prompt).toContain('Input (raw): /tmp/input_raw.html');
+		// And the content is NOT inlined.
+		expect(prompt).not.toContain('## Content to Analyze');
 	});
 });
 

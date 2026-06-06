@@ -457,6 +457,130 @@ describe('webfetchResearch - resume hint', () => {
 		const opts = spawnPiAgentMock.mock.calls[0][2];
 		expect(opts?.timeout).toBeUndefined();
 	});
+
+	it('writes input.md and threads the file path into the spawn options (non-streaming)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		const result = await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+		);
+
+		const opts = spawnPiAgentMock.mock.calls[0][2];
+		// The prompt is lean: the URL and the file paths go in, the
+		// content is NOT inlined.
+		expect(opts?.url).toBe('https://example.com');
+		expect(opts?.inputFile).toBeDefined();
+		expect(opts?.inputFile).toMatch(/input\.md$/);
+		// No raw content was set on the happy fetch result, so
+		// inputRawFile is undefined.
+		expect(opts?.inputRawFile).toBeUndefined();
+
+		// And the work dir / file paths are surfaced on the result
+		// details so the user can `ls` the work dir or `read` the
+		// input file directly.
+		expect(result.details.workDir).toBeDefined();
+		expect(result.details.inputFile).toBe(opts?.inputFile);
+		expect(result.details.inputRawFile).toBeUndefined();
+	});
+
+	it('writes input_raw.html when the fetch result carries raw content (streaming)', async () => {
+		const fetchWithRaw = {
+			content: [{ type: 'text' as const, text: 'Page body content' }],
+			details: {
+				url: 'https://example.com/page',
+				contentType: 'text/html',
+				status: 200,
+				processedAs: 'markdown' as const,
+				rawContent: '<!doctype html><html><body>raw</body></html>',
+				rawContentType: 'text/html',
+			},
+		};
+		fetchUrlMock.mockResolvedValue(fetchWithRaw);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+
+		const streamingConfig = {
+			callback: vi.fn(),
+			url: 'https://example.com',
+			initialPhase: 'analyzing' as const,
+			streamingPhase: 'streaming' as const,
+		};
+
+		const result = await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			streamingConfig,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+		);
+
+		const opts = spawnPiAgentMock.mock.calls[0][2];
+		expect(opts?.inputRawFile).toMatch(/input_raw\.html$/);
+
+		// The streaming result details also surface the file paths.
+		expect(result.details.inputFile).toBe(opts?.inputFile);
+		expect(result.details.inputRawFile).toBe(opts?.inputRawFile);
+	});
+
+	it('threads url / inputFile / inputRawFile into the spawn options on the agent-error path', async () => {
+		const fetchWithRaw = {
+			content: [{ type: 'text' as const, text: 'Page body content' }],
+			details: {
+				url: 'https://example.com/page',
+				contentType: 'text/html',
+				status: 200,
+				processedAs: 'markdown' as const,
+				rawContent: '<!doctype html><html>raw</html>',
+				rawContentType: 'text/html',
+			},
+		};
+		fetchUrlMock.mockResolvedValue(fetchWithRaw);
+		spawnPiAgentMock.mockRejectedValue(new Error('spawn failed'));
+
+		const result = await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+		);
+
+		// The work dir / file paths surface on the error result
+		// details too. The user can `ls` the work dir to see the
+		// files that were prepared for the failed subagent.
+		expect(result.details.workDir).toBeDefined();
+		expect(result.details.inputFile).toMatch(/input\.md$/);
+		expect(result.details.inputRawFile).toMatch(/input_raw\.html$/);
+	});
 });
 
 describe('webfetchResearch - other behavior', () => {

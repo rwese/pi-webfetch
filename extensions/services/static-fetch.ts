@@ -103,6 +103,13 @@ async function handleMarkdownFetch(
 		originalSize,
 		tempFileSize: Buffer.byteLength(finalText, 'utf-8'),
 		truncated,
+		// For plain-text / markdown inputs the "raw" is byte-identical
+		// to the processed content, but we still surface it so the
+		// research service can write `input_raw.md` (or `.txt` for
+		// `text/plain`). The subagent's `grep` works the same way on
+		// either file, but having both keeps the layout uniform.
+		rawContent: text,
+		rawContentType: contentType,
 	};
 
 	return {
@@ -146,6 +153,14 @@ async function handleHtmlFetch(
 		truncated,
 		extracted,
 		browserWarning: 'Using static fetch (no browser provider available)',
+		// Surface the raw HTML so the research service can write
+		// `input_raw.html` in the session work dir. The subagent
+		// can re-read the original markup when the markdown
+		// conversion drops content (e.g. metadata in `<meta>`,
+		// hidden JSON in `<script type="application/ld+json">`,
+		// attribute values, etc.).
+		rawContent: html,
+		rawContentType: contentType ?? 'text/html',
 	};
 
 	return {

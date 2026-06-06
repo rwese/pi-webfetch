@@ -42,6 +42,19 @@ export interface GitHubFetchOptions {
 export interface ProviderFetchResult {
   /** Extracted markdown content */
   content: string;
+  /**
+   * Original un-processed response (e.g. raw HTML for browser
+   * providers, raw text for static fetch). Optional: providers that
+   * already produce a clean structured payload (gh-cli, clawfetch)
+   * leave it `undefined`. The research service writes this to
+   * `input_raw.<ext>` in the session work dir.
+   */
+  rawContent?: string;
+  /**
+   * MIME type hint for `rawContent`. Used to pick the
+   * `input_raw.<ext>` extension. `undefined` when no raw is set.
+   */
+  rawContentType?: string | null;
   /** Metadata extracted from the page */
   metadata: FetchMetadata;
   /** Source URL (may differ from input if redirected) */

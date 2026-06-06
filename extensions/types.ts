@@ -56,6 +56,41 @@ export interface WebfetchDetails {
 	 * it to the user.
 	 */
 	notify?: string;
+	/**
+	 * Original un-processed response (e.g. the raw HTML from the
+	 * browser / static fetch) when the provider surfaces it. The
+	 * research service writes this to `input_raw.<ext>` in the
+	 * session work dir so the subagent can re-read the source if it
+	 * needs to grep for content the markdown conversion dropped.
+	 * `undefined` for providers that don't expose raw (gh-cli,
+	 * clawfetch, etc.).
+	 */
+	rawContent?: string;
+	/**
+	 * MIME type hint for `rawContent`. Used to pick the
+	 * `input_raw.<ext>` extension (`.html`, `.json`, `.txt`, ...).
+	 * `undefined` when no raw content is available.
+	 */
+	rawContentType?: string | null;
+	/**
+	 * Absolute path to the session work dir for the research
+	 * subagent. `inputFile` and `inputRawFile` (when set) live
+	 * under it. Populated on the research path; `undefined` for
+	 * non-research fetches.
+	 */
+	workDir?: string;
+	/**
+	 * Absolute path to `input.md` in the session work dir. The
+	 * research subagent reads this instead of receiving the
+	 * content inline, so the prompt stays lean. `undefined` for
+	 * non-research fetches.
+	 */
+	inputFile?: string;
+	/**
+	 * Absolute path to `input_raw.<ext>` in the session work dir.
+	 * `undefined` when no raw content is available.
+	 */
+	inputRawFile?: string;
 }
 
 /**
@@ -102,6 +137,18 @@ export interface ProviderFetchResult {
 	extractionMethod?: string;
 	providerName?: string;
 	metadata?: Record<string, unknown>;
+	/**
+	 * Original un-processed response (e.g. raw HTML for browser
+	 * providers, raw text for static fetch). The research service
+	 * writes this to `input_raw.<ext>` in the session work dir so
+	 * the subagent can grep the original markup when the markdown
+	 * conversion drops something. Optional; providers that
+	 * already produce a clean structured payload (gh-cli,
+	 * clawfetch) leave it `undefined`.
+	 */
+	rawContent?: string;
+	/** MIME type hint for `rawContent`. */
+	rawContentType?: string | null;
 }
 
 export interface WebfetchProvider {

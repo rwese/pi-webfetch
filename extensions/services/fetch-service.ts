@@ -154,6 +154,15 @@ async function processProviderResult(
 		provider: result.providerName,
 		extractionMethod: result.extractionMethod,
 		...(githubHint ? { githubHint } : {}),
+		// Forward the provider's raw payload (browser HTML, etc.) so
+		// the research service can write `input_raw.<ext>` in the
+		// session work dir. Providers that don't expose raw leave
+		// these as `undefined`; the spread keeps the field out of
+		// the result object in that case.
+		...(result.rawContent !== undefined ? { rawContent: result.rawContent } : {}),
+		...(result.rawContentType !== undefined
+			? { rawContentType: result.rawContentType }
+			: {}),
 	};
 
 	return cacheFetchResult(
@@ -223,6 +232,13 @@ export async function webfetchSPA(
 			provider: providerResult.providerName,
 			extractionMethod: providerResult.extractionMethod,
 			...(githubHint ? { githubHint } : {}),
+			// Same raw-payload forwarding as in fetchUrl above.
+			...(providerResult.rawContent !== undefined
+				? { rawContent: providerResult.rawContent }
+				: {}),
+			...(providerResult.rawContentType !== undefined
+				? { rawContentType: providerResult.rawContentType }
+				: {}),
 		};
 
 		return cacheFetchResult(

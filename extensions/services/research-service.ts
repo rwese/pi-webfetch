@@ -15,6 +15,7 @@ import {
 	deriveSessionName,
 	type ResumeSource,
 } from '../utils/resume.js';
+import { writeInputFiles, type ResearchInputFiles } from '../utils/formatting.js';
 
 /** Result type for research queries */
 export interface ResearchResult {
@@ -179,6 +180,20 @@ export async function webfetchResearch(
 	const sessionId = deriveSessionId(now(), url, query);
 	const sessionName = deriveSessionName(url);
 
+	// Write the research subagent's input files (processed markdown
+	// + optional raw) to a session-keyed work dir BEFORE spawning
+	// the subagent. The lean prompt references the file paths; the
+	// subagent `read`s / `grep`s the content on demand. Doing the
+	// write outside the try block means a write failure surfaces as
+	// a hard error (no spawn, no half-written session). The same
+	// paths are also surfaced in the success / error result details
+	// so the user can `ls` the work dir if they want to inspect it.
+	const inputFiles: ResearchInputFiles = await writeInputFiles(sessionId, {
+		content,
+		rawContent: fetchResult.details.rawContent,
+		rawContentType: fetchResult.details.rawContentType,
+	});
+
 	try {
 		// Phase 3: Analyze content
 		if (config) {
@@ -211,6 +226,9 @@ export async function webfetchResearch(
 				},
 				sessionId,
 				sessionName,
+				url,
+				inputFile: inputFiles.inputFile,
+				inputRawFile: inputFiles.inputRawFile,
 				...(timeout !== undefined ? { timeout } : {}),
 			});
 
@@ -220,6 +238,9 @@ export async function webfetchResearch(
 				phase: 'complete',
 				subagentSessionId: agentResult.sessionId ?? sessionId,
 				subagentSessionName: agentResult.sessionName ?? sessionName,
+				workDir: inputFiles.workDir,
+				inputFile: inputFiles.inputFile,
+				inputRawFile: inputFiles.inputRawFile,
 			};
 
 			// Return with final analysis (chunks already streamed)
@@ -233,6 +254,9 @@ export async function webfetchResearch(
 		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
 			sessionId,
 			sessionName,
+			url,
+			inputFile: inputFiles.inputFile,
+			inputRawFile: inputFiles.inputRawFile,
 			...(timeout !== undefined ? { timeout } : {}),
 		});
 
@@ -241,6 +265,9 @@ export async function webfetchResearch(
 			processedAs: 'research',
 			subagentSessionId: agentResult.sessionId ?? sessionId,
 			subagentSessionName: agentResult.sessionName ?? sessionName,
+			workDir: inputFiles.workDir,
+			inputFile: inputFiles.inputFile,
+			inputRawFile: inputFiles.inputRawFile,
 		};
 
 		return {
@@ -284,6 +311,16 @@ export async function webfetchResearch(
 				subagentSessionName: hint.details.subagentSessionName,
 				resumeCommand: hint.details.resumeCommand,
 				notify: hint.message,
+				// Surface the work dir + input paths on the error path
+				// too. The user can `ls <workDir>` to see the markdown
+				// and raw files that were prepared for the (failed)
+				// subagent, even when the subagent itself did not
+				// produce a useful result. This is useful when the
+				// agent errored before reading the input (e.g.
+				// timeout at startup).
+				workDir: inputFiles.workDir,
+				inputFile: inputFiles.inputFile,
+				inputRawFile: inputFiles.inputRawFile,
 			},
 		};
 	}

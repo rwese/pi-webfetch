@@ -202,6 +202,29 @@ carried in `WebfetchDetails` (`subagentSessionId`,
 `subagentSessionName`, `resumeCommand`) and in a side-channel
 `notify` so the conversation is not polluted.
 
+## Research Subagent Input Files
+
+Research mode writes the fetched content to a session-keyed work
+dir under the system temp dir, so the subagent can `read` /
+`grep` the content on demand instead of receiving the full
+content inline. The layout is:
+
+```
+<tmpdir>/pi-webfetch-research/<sessionId>/
+  input.md            # processed markdown (always written)
+  input_raw.<ext>     # original response (when available; .html / .md / .txt / .json / .bin)
+```
+
+The session id is the same `sha256(timestamp + url + query)` id
+used for the subagent's `--session-id`, so `pi --session <id>`
+locates the same files. The paths surface on the result
+`WebfetchDetails` as `workDir`, `inputFile`, and `inputRawFile`,
+and the lean prompt references them. The raw input is populated
+by the browser (`default`) and static fetch providers; gh-cli
+and clawfetch leave it `undefined` (their output is already
+clean structured markdown).
+
+
 ## Installation
 
 ```bash

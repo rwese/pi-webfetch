@@ -5,6 +5,71 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-06-06
+
+### Added
+
+- **Research subagent input files.** Research mode now writes the
+  fetched content to `input.md` (and the original un-processed
+  response to `input_raw.<ext>` when available) in a session-keyed
+  work dir under the system temp dir
+  (`<tmpdir>/pi-webfetch-research/<sessionId>/`). The subagent
+  references the file paths in its prompt and uses `read` / `grep`
+  to load the content on demand, instead of receiving the full
+  content inline. This keeps the LLM context small and makes the
+  prompt stable across very different page sizes.
+- **Lean research prompt.** The prompt is rewritten to be small
+  and query-focused: it surfaces the URL, the parent's cwd, the
+  session name, the input file paths, and short instructions
+  ("Read the input file(s) above and answer the query. Be concise
+  and direct; do not pad with generic analysis."). The old
+  `## Content to Analyze` block and the generic
+  "thorough, well-structured response" boilerplate are gone.
+- **Work dir + input file paths on `WebfetchDetails`.** The
+  research subagent result details now carry `workDir`,
+  `inputFile`, and `inputRawFile` so the user (and the CLI / MCP
+  surfaces) can `ls` the work dir and `read` the input files
+  directly. The fields are populated on both the success and the
+  agent-error paths.
+- **Raw content plumbing.** `ProviderFetchResult` and
+  `WebfetchDetails` gain optional `rawContent` and `rawContentType`
+  fields. The default provider (browser) populates them with the
+  raw HTML; the static fetch populates them with the original HTML
+  / text / markdown. The cache persists them so a research
+  subagent that hits the cache still has the original markup
+  available for `input_raw.<ext>`. Providers that already produce
+  a clean structured payload (gh-cli, clawfetch) leave them
+  `undefined`.
+- **`writeInputFiles(sessionId, options)` utility.** New
+  `extensions/utils/formatting.ts` helper that creates the
+  session-keyed work dir and writes `input.md` + `input_raw.<ext>`.
+  Returns the absolute paths so the caller can thread them into
+  the spawn options and the result details.
+
+### Changed
+
+- `extensions/pi-agent.ts::buildResearchPrompt` now takes a
+  `ResearchPromptInput` object instead of `(query, content)`. The
+  content is no longer inlined; the prompt references file paths
+  via the new `inputFile` / `inputRawFile` options. The old
+  positional `content` arg is accepted by `spawnPiAgent` for
+  back-compat but is not used in the prompt body.
+- `extensions/pi-agent.ts::SpawnPiAgentOptions` gains three
+  additive fields: `url?`, `inputFile?`, `inputRawFile?`. The
+  research service threads them through; the prompt surfaces
+  them so the subagent can re-look-up the source and grep the
+  original markup.
+- `extensions/services/static-fetch.ts` populates `rawContent` /
+  `rawContentType` on the HTML, markdown, and plain-text paths.
+  Binary paths are unchanged (no `rawContent`).
+- `src/providers/default.ts` populates `rawContent` /
+  `rawContentType` on the browser path so the subagent can grep
+  the original HTML when the cheerio/turndown conversion drops
+  something.
+- `extensions/cache.ts::CacheEntry` and
+  `extensions/services/cache-service.ts` persist and restore
+  `rawContent` / `rawContentType` so a research subagent that
+  hits the cache still has the raw payload available.
 ## [0.7.3] - 2026-06-06
 
 ### Fixed

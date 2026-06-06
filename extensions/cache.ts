@@ -55,6 +55,16 @@ export interface CacheEntry {
 	cachedAt: number;
 	provider?: string;
 	extractionMethod?: string;
+	/**
+	 * Original un-processed response (e.g. raw HTML for browser
+	 * providers, raw text for static fetch). Persisted so a
+	 * research subagent that hits the cache can still write
+	 * `input_raw.<ext>` in its session work dir. `undefined` for
+	 * providers that don't expose raw (gh-cli, clawfetch, ...).
+	 */
+	rawContent?: string;
+	/** MIME type hint for `rawContent`. */
+	rawContentType?: string | null;
 }
 
 /**
