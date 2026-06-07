@@ -212,6 +212,16 @@ export class BrowserManager {
 	 * then `main`, then `body`. Returns the first non-empty
 	 * match (where "non-empty" is `> 100` chars of HTML so we
 	 * do not pick up an empty container).
+	 *
+	 * The per-`agent-browser get` timeout is the caller-supplied
+	 * `timeout` (the same 30 s default the rest of the call
+	 * uses). The pre-v0.9.0 5 s cap made large Wikipedia
+	 * articles silently fall back to the static-fetch path
+	 * (review finding 6 / 1, BUG-2026-06-06-JGCMZSET-YZOYE):
+	 * the cap was hit before the body extraction finished and
+	 * the user got a `200` with the static result, no
+	 * `Provider:` line, no notify. The cap is removed so the
+	 * global timeout is the only budget owner.
 	 */
 	private async pickContentSource(
 		fallbackBody: string,
@@ -222,7 +232,7 @@ export class BrowserManager {
 		for (const source of ['article', 'main']) {
 			try {
 				const html = await execAsync('agent-browser', ['get', 'html', source], {
-					timeout: Math.min(timeout, 5_000),
+					timeout,
 					env,
 				});
 				if (html && html.trim().length > 100) {
