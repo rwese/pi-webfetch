@@ -45,47 +45,60 @@ afterEach(() => {
 describe('BrowserManager — pickContentSource no longer caps at 5 s', () => {
 	it('uses the caller-supplied timeout on `get html article`', async () => {
 		const m = new BrowserManager({ sessionName: 'test:42' });
-		// The default provider passes 30 s. The
-		// `get html article` exec call must inherit that
-		// timeout, not a 5 s cap.
-		await m.extractHtml('https://en.wikipedia.org/wiki/Markdown', 'networkidle', 30_000);
+		try {
+			// The default provider passes 30 s. The
+			// `get html article` exec call must inherit that
+			// timeout, not a 5 s cap.
+			await m.extractHtml('https://en.wikipedia.org/wiki/Markdown', 'networkidle', 30_000);
 
-		const articleCall = execAsyncMock.mock.calls.find(
-			(c) =>
-				c[0] === 'agent-browser' &&
-				c[1]?.[0] === 'get' &&
-				c[1]?.[1] === 'html' &&
-				c[1]?.[2] === 'article',
-		);
-		expect(articleCall).toBeDefined();
-		const opts = articleCall?.[2] as { timeout?: number } | undefined;
-		expect(opts?.timeout).toBe(30_000);
+			const articleCall = execAsyncMock.mock.calls.find(
+				(c) =>
+					c[0] === 'agent-browser' &&
+					c[1]?.[0] === 'get' &&
+					c[1]?.[1] === 'html' &&
+					c[1]?.[2] === 'article',
+			);
+			expect(articleCall).toBeDefined();
+			const opts = articleCall?.[2] as { timeout?: number } | undefined;
+			expect(opts?.timeout).toBe(30_000);
+		} finally {
+			// Close the session so the mock's
+			// `agent-browser close` call is exercised
+			// (and so a real `agent-browser` would be
+			// cleaned up if anyone runs this test
+			// without the mock).
+			await m.close();
+		}
 	});
 
 	it('uses the caller-supplied timeout on `get html main`', async () => {
 		const m = new BrowserManager({ sessionName: 'test:42' });
-		// Make `article` return empty so the cascade falls
-		// through to `main`. We want to assert the `main`
-		// call's timeout, not the `article` one (covered by
-		// the test above).
-		execAsyncMock.mockImplementation(
-			async (_cmd: string, args: string[]) => {
-				if (args[0] === 'get' && args[1] === 'html' && args[2] === 'article') return '';
-				return 'x'.repeat(500);
-			},
-		);
-		await m.extractHtml('https://en.wikipedia.org/wiki/Pi', 'networkidle', 30_000);
+		try {
+			// Make `article` return empty so the cascade falls
+			// through to `main`. We want to assert the `main`
+			// call's timeout, not the `article` one (covered by
+			// the test above).
+			execAsyncMock.mockImplementation(
+				async (_cmd: string, args: string[]) => {
+					if (args[0] === 'get' && args[1] === 'html' && args[2] === 'article') return '';
+					return 'x'.repeat(500);
+				},
+			);
+			await m.extractHtml('https://en.wikipedia.org/wiki/Pi', 'networkidle', 30_000);
 
-		const mainCall = execAsyncMock.mock.calls.find(
-			(c) =>
-				c[0] === 'agent-browser' &&
-				c[1]?.[0] === 'get' &&
-				c[1]?.[1] === 'html' &&
-				c[1]?.[2] === 'main',
-		);
-		expect(mainCall).toBeDefined();
-		const opts = mainCall?.[2] as { timeout?: number } | undefined;
-		expect(opts?.timeout).toBe(30_000);
+			const mainCall = execAsyncMock.mock.calls.find(
+				(c) =>
+					c[0] === 'agent-browser' &&
+					c[1]?.[0] === 'get' &&
+					c[1]?.[1] === 'html' &&
+					c[1]?.[2] === 'main',
+			);
+			expect(mainCall).toBeDefined();
+			const opts = mainCall?.[2] as { timeout?: number } | undefined;
+			expect(opts?.timeout).toBe(30_000);
+		} finally {
+			await m.close();
+		}
 	});
 
 	it('does NOT cap a 5 s caller timeout to anything below 5 s (back-compat with tests)', async () => {
@@ -93,18 +106,22 @@ describe('BrowserManager — pickContentSource no longer caps at 5 s', () => {
 		// The cap-removal must not over-cap: a 5 s caller's
 		// value is honoured verbatim.
 		const m = new BrowserManager({ sessionName: 'test:42' });
-		await m.extractHtml('https://example.com', 'networkidle', 5_000);
+		try {
+			await m.extractHtml('https://example.com', 'networkidle', 5_000);
 
-		const articleCall = execAsyncMock.mock.calls.find(
-			(c) =>
-				c[0] === 'agent-browser' &&
-				c[1]?.[0] === 'get' &&
-				c[1]?.[1] === 'html' &&
-				c[1]?.[2] === 'article',
-		);
-		expect(articleCall).toBeDefined();
-		const opts = articleCall?.[2] as { timeout?: number } | undefined;
-		expect(opts?.timeout).toBe(5_000);
+			const articleCall = execAsyncMock.mock.calls.find(
+				(c) =>
+					c[0] === 'agent-browser' &&
+					c[1]?.[0] === 'get' &&
+					c[1]?.[1] === 'html' &&
+					c[1]?.[2] === 'article',
+			);
+			expect(articleCall).toBeDefined();
+			const opts = articleCall?.[2] as { timeout?: number } | undefined;
+			expect(opts?.timeout).toBe(5_000);
+		} finally {
+			await m.close();
+		}
 	});
 
 	it('keeps the 5 s cap on `tab close` (different concern: not blowing past the caller budget)', async () => {
@@ -112,14 +129,18 @@ describe('BrowserManager — pickContentSource no longer caps at 5 s', () => {
 		// `pickContentSource` was the bug; the cap on
 		// `tab close` is intentional.
 		const m = new BrowserManager({ sessionName: 'test:42' });
-		await m.extractHtml('https://example.com', 'networkidle', 30_000);
+		try {
+			await m.extractHtml('https://example.com', 'networkidle', 30_000);
 
-		const closeCall = execAsyncMock.mock.calls.find(
-			(c) => c[0] === 'agent-browser' && c[1]?.[0] === 'tab' && c[1]?.[1] === 'close',
-		);
-		expect(closeCall).toBeDefined();
-		const opts = closeCall?.[2] as { timeout?: number } | undefined;
-		// Cap is `min(timeout, 5_000)` = `min(30_000, 5_000)` = 5_000.
-		expect(opts?.timeout).toBe(5_000);
+			const closeCall = execAsyncMock.mock.calls.find(
+				(c) => c[0] === 'agent-browser' && c[1]?.[0] === 'tab' && c[1]?.[1] === 'close',
+			);
+			expect(closeCall).toBeDefined();
+			const opts = closeCall?.[2] as { timeout?: number } | undefined;
+			// Cap is `min(timeout, 5_000)` = `min(30_000, 5_000)` = 5_000.
+			expect(opts?.timeout).toBe(5_000);
+		} finally {
+			await m.close();
+		}
 	});
 });
