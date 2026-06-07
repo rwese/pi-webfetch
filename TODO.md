@@ -47,4 +47,12 @@ Three bug reports from the 2026-06-06 review need to be fixed:
 - [x] **T5.2** Run `npm run build` — `dist/` must compile
 - [x] **T5.3** Update `CHANGELOG.md` and `AGENTS.md` if behaviour changes affect them
 - [x] **T5.4** Mark all three bug reports' TODO checkboxes done
-- [ ] **T5.5** Create clean commits (one per bug or one combined per phase)
+- [x] **T5.5** Create clean commits (one per bug or one combined per phase)
+
+## Commits
+
+- `a2b78de` feat(providers): add ProviderError.reason and providerError surface for fallback classification _(foundation)_
+- `c659ef4` fix(browser): remove 5s cap on per-`get` timeout in pickContentSource _(BUG #1 timeout path)_
+- `e6369b5` feat(providers): classify fallback errors, detect Chromium net-error pages, skip transient cache writes _(BUG #1 + BUG #2)_
+- `bfa8212` fix(markdown): strip Wikipedia MathJax wrapper, keep rendered image _(BUG #3)_
+- `26ef464` docs: mark 2026-06-06 review bugs fixed, update CHANGELOG / AGENTS / TODO
