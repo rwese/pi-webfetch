@@ -82,6 +82,51 @@ function addWikitableRule(td: TurndownService): void {
 }
 
 /**
+ * Add the MediaWiki MathJax rule to a `TurndownService` so
+ * the inline `mwe-math-*` wrapper produces only the rendered
+ * `<img>` in markdown output. The default `textContent`
+ * extraction would otherwise emit the literal TeX source
+ * 3-4 times per formula (the MathML `<annotation
+ * encoding="TeX">`, the `<img alt="...">`, and a
+ * `<span style="display: none">` fallback), which
+ * BUG-2026-06-06-JGCMZSOB-YZOYE flagged as a fidelity
+ * regression. The rule keeps the rendered image (with its
+ * alt text) and drops the rest of the wrapper.
+ */
+function addMathJaxRule(td: TurndownService): void {
+	td.addRule('mwe-math', {
+		filter: (node) => {
+			const className = (node as unknown as { className?: string }).className ?? '';
+			return (
+				typeof className === 'string' &&
+				/\bmwe-math-(mathml|math)-?(display|inline)\b/i.test(className)
+			);
+		},
+		replacement: (_content, node) => {
+			// Pick the first <img> descendant and render it
+			// as a markdown image link. The alt text is
+			// the same TeX source the user would have seen
+			// visually, so it stays in the output (without
+			// the alt text, the rendered image is a blank
+			// link, and the LLM downstream has no
+			// representation of the formula).
+			const containerNode = node as unknown as {
+				querySelector: (selector: string) => Element | null;
+			};
+			const img = containerNode.querySelector('img');
+			if (!img) return '';
+			const imgNode = img as unknown as {
+				getAttribute: (name: string) => string | null;
+			};
+			const src = imgNode.getAttribute('src');
+			if (!src) return '';
+			const alt = imgNode.getAttribute('alt') ?? '';
+			return `![${alt}](${src})`;
+		},
+	});
+}
+
+/**
  * Create a configured TurndownService instance
  */
 export function createTurndownService(): TurndownService {
@@ -102,6 +147,12 @@ export function createTurndownService(): TurndownService {
 	// `<th>`-first-row heuristic mangle the headers. See
 	// review finding 4 (BXAD / M2).
 	addWikitableRule(td);
+
+	// MediaWiki inline MathJax: BUG-2026-06-06-JGCMZSOB-YZOYE.
+	// The default `textContent` extraction leaks the TeX
+	// source 3-4 times per formula; this rule keeps only
+	// the rendered `<img>`.
+	addMathJaxRule(td);
 
 	return td;
 }
