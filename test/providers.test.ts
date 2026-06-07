@@ -9,6 +9,8 @@ import {
   ProviderManager,
   createProviderManager,
 } from "../src/providers";
+import type { WebfetchProvider } from "../src/providers/types";
+import { ProviderError } from "../src/providers/types";
 
 describe("DefaultProvider", () => {
   const provider = new DefaultProvider();
@@ -250,12 +252,55 @@ describe("ProviderManager with config", () => {
 });
 
 describe("Provider error handling", () => {
-  it("handles fetch error gracefully", async () => {
-    const manager = createProviderManager();
-    const result = await manager.fetch("https://this-domain-does-not-exist-12345.com");
-    
+  it("returns a structured failure when every provider throws (no real network call)", async () => {
+    // Regression for the 2026-06-07 audit (TODO.md):
+    // the previous `handles fetch error gracefully`
+    // test called `manager.fetch` against a real
+    // non-existent domain. On hosts with
+    // `agent-browser` installed, that opened a real
+    // browser tab + left the per-process session
+    // open (the test never called `manager.closeAll`).
+    // The session was orphaned and accumulated across
+    // test runs.
+    //
+    // The new test injects a failing provider via
+    // the `ProviderManager` constructor. No real
+    // network, no real browser, deterministic, and
+    // it actually verifies the contract: when every
+    // provider throws, the manager returns the
+    // `{ success: false, error, attemptedProviders }`
+    // shape (not an unhandled exception).
+    const failingProvider: WebfetchProvider = {
+      name: "failing-default",
+      priority: 10,
+      capabilities: {
+        supportsSPA: true,
+        supportsGitHubFastPath: false,
+        supportsRedditRSS: false,
+        supportsBotProtection: false,
+        returnsMetadata: false,
+      },
+      isAvailable: () => true,
+      detectUrl: () => ({
+        isGitHub: false,
+        isReddit: false,
+        isLikelySPA: false,
+        isLikelyBinary: false,
+      }),
+      fetch: async () => {
+        throw new ProviderError("synthetic fetch failure", "failing-default");
+      },
+    };
+    const manager = new ProviderManager({}, undefined, [failingProvider]);
+
+    const result = await manager.fetch("https://example.com");
+
     expect(result).toBeDefined();
-    expect("success" in result || "content" in result).toBe(true);
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining("synthetic fetch failure"),
+      attemptedProviders: ["failing-default"],
+    });
   });
 });
 
