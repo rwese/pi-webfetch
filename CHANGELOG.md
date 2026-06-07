@@ -7,6 +7,51 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Provider error classification (BUG-2026-06-06-JGCMZSET-YZOYE).**
+  New `reason` field on `ProviderError`
+  (`'unknown' | 'timeout' | 'navigation_failed' | 'low_text_ratio'`)
+  and a new `providerError: { provider, reason, message }` field on
+  `WebfetchDetails` and `ProviderFetchResult`. When the default
+  (browser) provider fails, the fetch service classifies the cause
+  and surfaces it on the optional `cacheNotify` channel (TUI
+  notify on the extension, stderr on the CLI, `_meta.details.notify`
+  on the MCP). A transient reason (`timeout`, `navigation_failed`)
+  skips the cache write so the next call re-attempts the browser.
+  Pinned by `test/provider-fallback-notify.test.ts` and
+  `test/fetch-service-net-error.test.ts`.
+- **Chromium net-error detection (BUG-2026-06-06-JGCMZSNR-YZOYE).**
+  New `detectChromiumNetError(body)` helper in `default.ts` and a
+  scan in the `extractHtml` / `extractText` paths. When the rendered
+  body contains a known Chromium net-error string
+  (`ERR_NAME_NOT_RESOLVED`, `ERR_CONNECTION_REFUSED`,
+  `ERR_SSL_PROTOCOL_ERROR`, etc.), the provider throws a
+  `ProviderError` with `reason: 'navigation_failed'`. The fetch
+  service falls back to static fetch, which produces the documented
+  `Status: 0 + Error: TypeError: fetch failed` for a DNS-failure URL
+  (the test matrix contract for call 8). Pinned by
+  `test/provider-net-error.test.ts`.
+- **MediaWiki MathJax cleanup (BUG-2026-06-06-JGCMZSOB-YZOYE).**
+  Wikipedia inline MathJax `<span class="mwe-math-*">` wrappers
+  used to leak the formula's TeX source 3-4 times per formula
+  (the MathML `<annotation encoding="TeX">`, the `<img alt="...">`,
+  and a `<span style="display: none">` fallback). The v0.9.0 fix
+  adds the MathJax selectors to `PAGE_DENYLIST_EXTRA` in the
+  default provider (so `cleanHtml` strips the wrapper) and a new
+  `addMathJaxRule` turndown rule that keeps the rendered `<img>`
+  as a single `![alt](src)` markdown image link. Pinned by
+  `test/wikipedia-math-cleanup.test.ts` and the
+  `test/fixtures/wikipedia-pi-math.html` fixture.
+
+### Changed
+
+- **Per-`get` browser timeout cap removed.** The 5 s cap on
+  `agent-browser get html article|main` in
+  `BrowserManager.pickContentSource` was the root cause of the
+  silent fallback for large Wikipedia pages (BUG-2026-06-06-JGCMZSET-YZOYE).
+  The per-`get` timeout is now the caller-supplied `timeout`
+  (30 s default); the global timeout is the only budget owner.
+  Pinned by `test/browser-large-page.test.ts`.
+
 - **Cache TTL (review finding 1, M1.A).** New
   `isFresh(entry, now, ttlMs?)` helper and
   `DEFAULT_CACHE_TTL_MS = 1 hour`. The cache layer is now

@@ -77,3 +77,17 @@ const names = listFixtures();
 - Use descriptive directory names
 - `_` prefix directories are ignored by loader
 - Body stored as-is (raw, no processing)
+
+## Inline HTML fixtures (slices)
+
+Some tests need a small HTML slice (e.g. one or two
+elements) rather than a full HTTP response. Place the
+slice as a top-level `<name>.html` file in this
+directory. The vitest test reads it directly via
+`readFileSync(join(__dirname, 'fixtures', '<name>.html'))`.
+
+Example: `wikipedia-pi-math.html` is a slice of the
+Wikipedia `Pi` article containing two inline MathJax
+formula spans. It backs the regression test in
+`test/wikipedia-math-cleanup.test.ts`
+([BUG-2026-06-06-JGCMZSOB-YZOYE](../../../docs/bugs/BUG-2026-06-06-JGCMZSOB-YZOYE.md)).

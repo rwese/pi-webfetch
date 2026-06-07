@@ -12,6 +12,7 @@
 | Add Reddit RSS fast path | - | ✅ Done | |
 | Add GitHub structured data | - | ✅ Done | |
 | #8 Better Error Messages | Medium | ✅ Done | Resumable subagent sessions, resume commands, and notify surfaces |
+| Address 2026-06-06 review bugs (3) | High | ✅ Done | [BUG-2026-06-06-JGCMZSET-YZOYE](./docs/bugs/BUG-2026-06-06-JGCMZSET-YZOYE.md) (silent fallback), [BUG-2026-06-06-JGCMZSNR-YZOYE](./docs/bugs/BUG-2026-06-06-JGCMZSNR-YZOYE.md) (DNS swallowed as 200), [BUG-2026-06-06-JGCMZSOB-YZOYE](./docs/bugs/BUG-2026-06-06-JGCMZSOB-YZOYE.md) (MathJax TeX leak). `providerError` surface + 5 s cap removal + Chromium net-error scan + MathJax denylist + `addMathJaxRule` turndown rule. 21 new tests across `provider-fallback-notify`, `browser-large-page`, `provider-net-error`, `fetch-service-net-error`, `wikipedia-math-cleanup`. Live matrix re-run is the only remaining acceptance criterion. |
 
 ---
 
