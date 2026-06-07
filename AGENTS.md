@@ -103,6 +103,18 @@ test/fixtures/       offline HTML fixtures and fixture helpers
   provider in `src/providers/`, or `extensions/markdown.ts`. The
   matrix is derived from `docs/reviews/webfetch-review-2026-06-06.md`.
 
+- **Browser session cleanup in tests** —
+  `test/helpers/agent-browser-cleanup.ts` is the
+  per-process safety net for `agent-browser` session
+  cleanup. Per-test cleanup (each test that spawns a
+  `DefaultProvider` / `BrowserManager` must call
+  `close()` in `finally`) is the primary fix; the
+  helper is the belt-and-braces. **Never** call
+  `agent-browser close --all` from a test or the
+  helper — the user's other running processes (pi,
+  codex) own those sessions, and a blanket close
+  would kill them.
+
 ## Boundaries
 
 ALWAYS:

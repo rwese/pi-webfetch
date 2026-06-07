@@ -1,58 +1,82 @@
-# TODO — Address docs/bugs
+# TODO — Browser session cleanup audit
 
-Three bug reports from the 2026-06-06 review need to be fixed:
+Review finding (manual user report, 2026-06-07):
+running `agent-browser session list` on the test host
+shows 18+ active sessions, including the current
+process's session. The user asked us to review the test
+suite so we do proper cleanup of the spawned browser
+sessions, and to **not** run a blanket
+`agent-browser close --all` (which would kill other
+running processes' sessions, including the user's pi /
+codex sessions).
 
-1. **BUG-2026-06-06-JGCMZSET-YZOYE** (HIGH) — Browser provider silently falls back to static for large pages
-2. **BUG-2026-06-06-JGCMZSNR-YZOYE** (MEDIUM) — Browser provider swallows DNS errors as `Status: 200` + text/plain
-3. **BUG-2026-06-06-JGCMZSOB-YZOYE** (LOW) — Wikipedia MathJax TeX source leaks into markdown output
+## Root causes
 
-## Task order
+1. **`test/providers.test.ts:253`** — the
+   `handles fetch error gracefully` test calls
+   `manager.fetch("https://this-domain-does-not-exist-12345.com")`
+   with the real `ProviderManager`. On hosts with
+   `agent-browser` installed, this opens a real browser
+   tab, then the `extractHtml` `finally` closes the tab —
+   but the **session** is never closed. The session runs
+   until the `agent-browser` host process exits (which is
+   on the test host, not the test process).
+2. **`test/browser-large-page.test.ts`** and
+   **`test/browser-tab-isolation.test.ts`** create
+   `BrowserManager` instances and call `extractHtml` but
+   never call `m.close()`. The mock `execAsync` swallows
+   the `agent-browser close` call so no real browser
+   spawns, but the close path is not exercised (coverage
+   gap) and any future test that drops the mock would
+   leak.
+3. **No process-level safety net.** If a test forgets to
+   close, the test process exits and the session is
+   orphaned.
 
-### Phase 1: Foundation (shared by all 3 bugs)
+## Plan
 
-- [x] **T1.1** Extend `ProviderError` with a `reason` field (`'timeout' | 'navigation_failed' | 'low_text_ratio' | 'unknown'`)
-- [x] **T1.2** Add `providerError` field to `WebfetchDetails` in `extensions/types.ts`
-- [x] **T1.3** Add `providerError` field to `ProviderFetchResult` in `src/providers/types.ts` (so providers can opt-in to surfacing the cause)
+### Phase 1: per-test cleanup
 
-### Phase 2: BUG #1 — Browser provider silent fallback
+- [x] **T1.1** `test/browser-large-page.test.ts`: wrap each test body in `try { … } finally { await m.close(); }`.
+- [x] **T1.2** `test/browser-tab-isolation.test.ts`: same pattern. Most tests already rely on the per-tab `finally` inside `extractHtml`; we add the per-session `m.close()` as the outer cleanup.
+- [x] **T1.3** `test/provider-net-error.test.ts`: confirm the existing `try/finally { await provider.close(); }` is in place (it is).
 
-- [x] **T2.1** Bump the per-subcommand `agent-browser get` timeout in `browser-manager.ts` from 5s to caller-supplied `timeout` (no cap)
-- [x] **T2.2** In `default.ts`, throw `ProviderError` with `reason: 'timeout'` (or similar) when the browser times out
-- [x] **T2.3** In `fetch-service.ts` `fetchUrl` / `webfetchSPA`: surface the `ProviderError` via `cacheNotify` / `details.notify` and a one-line warning in the content
-- [x] **T2.4** In `cacheFetchResult`: skip cache write when the result's `providerError.reason` is `'timeout'` or `'navigation_failed'` (transient causes)
-- [x] **T2.5** Add tests:
-  - [x] `test/provider-fallback-notify.test.ts` — `ProviderError` is surfaced via `details.providerError` and a warning line
-  - [x] `test/browser-large-page.test.ts` — `pickContentSource` does not bail at 5s
-  - [x] `test/cache-no-poison-on-failure.test.ts` — fallback after transient error is not cached (covered in `provider-fallback-notify.test.ts` — skips the cache write on transient reason)
+### Phase 2: deterministic error-handling test
 
-### Phase 3: BUG #2 — DNS errors swallowed as 200
+- [x] **T2.1** `test/providers.test.ts:253` — replace the real network call with a deterministic test that injects a failing provider via `new ProviderManager({}, undefined, [failingProvider])` and asserts the manager returns `{ success: false, error, attemptedProviders }`. No real network, no real browser, no leak.
+- [x] **T2.2** Confirm the flake (`handles fetch error gracefully` was the test that hit DNS timeouts) is gone.
 
-- [x] **T3.1** Add Chromium net-error string scan in `default.ts` (after `extractHtml` and `extractText`)
-- [x] **T3.2** On a hit, throw `ProviderError` with `reason: 'navigation_failed'`
-- [x] **T3.3** Add tests:
-  - [x] `test/provider-net-error.test.ts` — mock `agent-browser` to return a body containing `ERR_NAME_NOT_RESOLVED`, assert `ProviderError` with `reason: 'navigation_failed'`
-  - [x] `test/fetch-service-net-error.test.ts` — full flow: navigation error → falls back to static, cache not written
+### Phase 3: process-level safety net
 
-### Phase 4: BUG #3 — MathJax TeX source leak
+- [x] **T3.1** Add `test/helpers/agent-browser-cleanup.ts`:
+  - `registerProcessExitCleanup()` — registers `process.on('beforeExit')` to call `agent-browser close --session <deriveSessionName()>` for the current process. If `agent-browser --version` fails (not installed), the hook is a no-op.
+  - `cleanupCurrentSession()` — manual cleanup helper, idempotent, safe to call multiple times.
+  - **CRITICAL:** never call `agent-browser close --all`. Only close the session whose name matches `deriveSessionName()` (the current process). This avoids killing other running processes' sessions.
+- [x] **T3.2** Add `test/setup.ts` that calls `registerProcessExitCleanup()` once. Wire it via `vitest.config.ts` `setupFiles`.
+- [x] **T3.3** Confirm the test process cleans up its own session on `vitest run` exit.
 
-- [x] **T4.1** Add MathJax denylist selectors to `PAGE_DENYLIST_EXTRA` in `default.ts` (mwe-math-*, math annotation[encoding="TeX"], display:none inside mwe-math-*)
-- [x] **T4.2** Update `cleanHtml` in `turndown-config.ts` to also process these (or rely on the existing extra-selectors merging path)
-- [x] **T4.3** Add a MathJax-aware turndown rule that strips alt text + display-none fallback for the `<span class="mwe-math-*">` element but keeps the rendered `<img>`
-- [x] **T4.4** Add fixture `test/fixtures/wikipedia-pi-math.html` (a small slice of the Pi article containing 1-2 formula spans)
-- [x] **T4.5** Add `test/wikipedia-math-cleanup.test.ts` — assert zero `\displaystyle` / `\textstyle` / `\frac` matches and the rendered image link is preserved
+### Phase 4: validate
 
-### Phase 5: Final validation
-
-- [x] **T5.1** Run `npm run validate` — must exit 0
-- [x] **T5.2** Run `npm run build` — `dist/` must compile
-- [x] **T5.3** Update `CHANGELOG.md` and `AGENTS.md` if behaviour changes affect them
-- [x] **T5.4** Mark all three bug reports' TODO checkboxes done
-- [x] **T5.5** Create clean commits (one per bug or one combined per phase)
+- [x] **T4.1** `npm run validate` exits 0.
+- [x] **T4.2** `agent-browser session list` before / after `npm test` shows the **current process's session** is added during the run and removed after.
+- [x] **T4.3** Other processes' sessions are NOT touched.
+- [x] **T4.4** Commit as `test(browser): clean up spawned sessions on test exit` (or similar).
 
 ## Commits
 
-- `a2b78de` feat(providers): add ProviderError.reason and providerError surface for fallback classification _(foundation)_
-- `c659ef4` fix(browser): remove 5s cap on per-`get` timeout in pickContentSource _(BUG #1 timeout path)_
-- `e6369b5` feat(providers): classify fallback errors, detect Chromium net-error pages, skip transient cache writes _(BUG #1 + BUG #2)_
-- `bfa8212` fix(markdown): strip Wikipedia MathJax wrapper, keep rendered image _(BUG #3)_
-- `26ef464` docs: mark 2026-06-06 review bugs fixed, update CHANGELOG / AGENTS / TODO
+- `801a959` refactor(test): replace real-network error-handling test with deterministic mock-injected test
+- `44ad1d9` test(browser): add per-test BrowserManager.close() cleanup
+- _(pending)_ `test(browser): add process-level safety net for agent-browser session cleanup`
+- _(pending)_ `docs: AGENTS.md / CHANGELOG.md / BACKLOG.md / TODO.md`
+
+## Constraints
+
+- **Do NOT** call `agent-browser close --all`. The
+  user explicitly said "not to kill our testing
+  environment host." The host has other running
+  processes with their own sessions; closing all would
+  orphan those.
+- Only close the session owned by the current test
+  process (matched by `${hostname}:${process.pid}`).
+- The per-test cleanup pattern is the primary fix; the
+  process-level safety net is belt-and-braces.

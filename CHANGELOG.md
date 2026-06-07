@@ -5,7 +5,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Added
+### Added (2026-06-07 browser-session-cleanup audit)
+
+- **Browser session cleanup in tests.** Per-test
+  cleanup in `test/browser-large-page.test.ts`,
+  `test/browser-tab-isolation.test.ts`, and
+  `test/provider-net-error.test.ts` (the
+  `DefaultProvider` / `BrowserManager` instances each
+  test creates are now closed in a `try/finally`
+  block). Plus a process-level safety net:
+  `test/helpers/agent-browser-cleanup.ts` registers a
+  `process.on('beforeExit')` hook (wired via
+  `test/setup.ts` and `vitest.config.ts::setupFiles`)
+  that closes the **current test process's session**
+  on exit. The hook is scoped to
+  `agent-browser close --session <our-name>` and
+  **never** calls `agent-browser close --all`, so it
+  does not touch the user's other running processes'
+  sessions on the same host. Pinned by 8 new tests in
+  `test/agent-browser-cleanup.test.ts` (1 unit, 4
+  `cleanupCurrentSession`, 1 register-idempotency, 1
+  re-fire guard, 1 end-to-end against a real
+  `agent-browser`).
+
+### Changed (2026-06-07 browser-session-cleanup audit)
+
+- **Refactor (test): deterministic error-handling test.**
+  The previous `handles fetch error gracefully` test
+  in `test/providers.test.ts` did a real network call
+  to a non-existent domain. On hosts with
+  `agent-browser` installed, the default provider
+  spawned a real browser session and the test never
+  closed it (the leak from the 2026-06-07 audit). The
+  new test injects a failing provider via
+  `new ProviderManager({}, undefined, [failingProvider])`
+  and asserts the manager returns the documented
+  `{ success: false, error, attemptedProviders }`
+  shape. No real network, no real browser, no leak;
+  the DNS-resolution flake is gone.
+
+### Added (v0.9.0 / 2026-06-06 review fixes)
 
 - **Provider error classification (BUG-2026-06-06-JGCMZSET-YZOYE).**
   New `reason` field on `ProviderError`

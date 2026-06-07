@@ -13,6 +13,7 @@
 | Add GitHub structured data | - | ✅ Done | |
 | #8 Better Error Messages | Medium | ✅ Done | Resumable subagent sessions, resume commands, and notify surfaces |
 | Address 2026-06-06 review bugs (3) | High | ✅ Done | [BUG-2026-06-06-JGCMZSET-YZOYE](./docs/bugs/BUG-2026-06-06-JGCMZSET-YZOYE.md) (silent fallback), [BUG-2026-06-06-JGCMZSNR-YZOYE](./docs/bugs/BUG-2026-06-06-JGCMZSNR-YZOYE.md) (DNS swallowed as 200), [BUG-2026-06-06-JGCMZSOB-YZOYE](./docs/bugs/BUG-2026-06-06-JGCMZSOB-YZOYE.md) (MathJax TeX leak). `providerError` surface + 5 s cap removal + Chromium net-error scan + MathJax denylist + `addMathJaxRule` turndown rule. 21 new tests across `provider-fallback-notify`, `browser-large-page`, `provider-net-error`, `fetch-service-net-error`, `wikipedia-math-cleanup`. Live matrix re-run is the only remaining acceptance criterion. |
+| Browser session cleanup in tests | High | ✅ Done | Per-test `try/finally { close() }` in `browser-large-page`, `browser-tab-isolation`, `provider-net-error`. Process-level safety net in `test/helpers/agent-browser-cleanup.ts` (closes **only the current process's session** via `agent-browser close --session <our-name>`, never `--all`). Deterministic error-handling test in `providers.test.ts` (replaced real network call). 8 new tests in `agent-browser-cleanup.test.ts`. Pre-existing DNS flake in `providers.test.ts:253` is gone. |
 
 ---
 
