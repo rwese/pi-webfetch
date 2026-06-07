@@ -24,6 +24,7 @@ import { buildFetchHeader } from './header-builder.js';
 import { cacheFetchResult, getCachedResult } from './cache-service.js';
 import { staticFetch, handleBinary } from './static-fetch.js';
 import { getProviderManager } from './session-manager.js';
+import { ProviderError } from '../../src/providers/types.js';
 import type { CacheKeyOptions } from '../cache.js';
 
 const MAX_MARKDOWN_SIZE = 100 * 1024;
@@ -144,6 +145,12 @@ export async function fetchUrl(
 	// - When explicitly requested via provider: "none"
 	const shouldUseProvider = !isRawGitHubUrl && provider !== 'none';
 
+	// BUG-2026-06-06-JGCMZSET-YZOYE / BUG-2026-06-06-JGCMZSNR-YZOYE:
+	// capture the provider error so the static fallback can
+	// carry it on `details.providerError` (and the cache layer
+	// can decide whether the fallback is transient).
+	let providerError: WebfetchDetails['providerError'] | undefined;
+
 	if (shouldUseProvider) {
 		try {
 			const config: ProviderConfig & { provider?: string } = {
@@ -160,17 +167,66 @@ export async function fetchUrl(
 					options,
 				);
 			}
-		} catch {
-			// Provider failed, fall back to static fetch
+		} catch (error) {
+			// Provider failed. BUG-2026-06-06-JGCMZSET-YZOYE /
+			// BUG-2026-06-06-JGCMZSNR-YZOYE: surface the cause
+			// to the user and to the next call (so a transient
+			// timeout does not poison the cache with a static
+			// fallback). The fetch service used to swallow the
+			// error silently; the user had no way to tell the
+			// browser was abandoned.
+			providerError = classifyProviderError(error, provider);
+			const warning = `webfetch: ${providerError.provider} provider failed (${providerError.reason}) for ${url}: ${providerError.message}; falling back to static fetch`;
+			// Surface on the optional notify channel (TUI on
+			// the extension, stderr on the CLI, _meta.details
+			// on the MCP).
+			writeNotify(options, warning, 'warn');
 		}
 	}
 
 	// Fallback to static fetch
+	const fallback = await staticFetch(url, fetchFn);
+	if (providerError) {
+		// Forward the provider error onto the fallback's
+		// details so the user-facing header can read it
+		// (e.g. `Provider: browser (failed: navigation_failed)`)
+		// and the in-content warning can quote the cause.
+		// The cache layer reads `details.providerError.reason`
+		// to decide whether the fallback is transient (skip
+		// the cache write) or safe to persist.
+		fallback.details.providerError = providerError;
+	}
 	return cacheFetchResult(
-		await staticFetch(url, fetchFn),
+		fallback,
 		cacheKey,
 		(message, level) => writeNotify(options, message, level),
 	);
+}
+
+/**
+ * Classify a provider failure into a `providerError` record
+ * suitable for `WebfetchDetails.providerError`. Recognises
+ * the in-tree `ProviderError` class (default provider) and
+ * maps its `reason` through. Any other thrown value gets
+ * `reason: 'unknown'` and a stringified message.
+ */
+function classifyProviderError(
+	error: unknown,
+	providerHint: string | undefined,
+): NonNullable<WebfetchDetails['providerError']> {
+	if (error instanceof ProviderError) {
+		return {
+			provider: error.providerName,
+			reason: error.reason,
+			message: error.message,
+		};
+	}
+	const message = error instanceof Error ? error.message : String(error);
+	return {
+		provider: providerHint ?? 'browser',
+		reason: 'unknown',
+		message,
+	};
 }
 
 /**
@@ -296,7 +352,25 @@ export async function webfetchSPA(
 		waitFor: waitFor as 'networkidle' | 'domcontentloaded',
 		github: options?.github,
 	};
-	const result = await manager.fetch(url, config);
+	let result;
+	try {
+		result = await manager.fetch(url, config);
+	} catch (error) {
+		// BUG-2026-06-06-JGCMZSET-YZOYE: same surface
+		// path as `fetchUrl`. Classify the cause, warn the
+		// user, and fall through to the static-fetch path
+		// with the error attached to `details.providerError`.
+		const providerError = classifyProviderError(error, undefined);
+		const warning = `webfetch: ${providerError.provider} provider failed (${providerError.reason}) for ${url}: ${providerError.message}; falling back to static fetch`;
+		writeNotify(options, warning, 'warn');
+		const fallback = await staticFetch(url, fetch);
+		fallback.details.providerError = providerError;
+		return cacheFetchResult(
+			fallback,
+			cacheKey,
+			(message, level) => writeNotify(options, message, level),
+		);
+	}
 
 	if (result && 'content' in result) {
 		const providerResult = result as ProviderFetchResult;

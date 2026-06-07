@@ -56,6 +56,19 @@ export function extractHtmlTitle(html: string): string | undefined {
  * the requested URL when the provider did not surface a
  * `finalUrl`.
  */
+/**
+ * Classify a `ProviderErrorReason` as transient. Transient
+ * reasons do not poison the cache: a subsequent call within
+ * the same TTL re-attempts the provider. Deterministic
+ * reasons (e.g. `low_text_ratio`) are safe to cache because
+ * they describe a static property of the rendered page.
+ */
+function isTransientProviderErrorReason(
+	reason: 'unknown' | 'timeout' | 'navigation_failed' | 'low_text_ratio',
+): boolean {
+	return reason === 'timeout' || reason === 'navigation_failed';
+}
+
 function pathToComparisonKey(url: string): string {
 	try {
 		const parsed = new URL(url);
@@ -242,6 +255,15 @@ export function buildCacheEntry(result: FetchResult): {
  * original `FetchResult` is returned unchanged so the caller can
  * decide what to do with it (typically: return it to the user;
  * the next call will re-fetch from the provider).
+ *
+ * BUG-2026-06-06-JGCMZSET-YZOYE / BUG-2026-06-06-JGCMZSNR-YZOYE:
+ * when the result carries a `providerError` (the browser was
+ * tried and failed, the static fallback is what's in the
+ * result), the cache write is skipped for transient reasons
+ * (`timeout`, `navigation_failed`). The next call within the
+ * same TTL re-attempts the browser. A `low_text_ratio` /
+ * `unknown` reason is a deterministic classification and is
+ * safe to cache.
  */
 export async function cacheFetchResult(
 	result: FetchResult,
@@ -250,6 +272,18 @@ export async function cacheFetchResult(
 ): Promise<FetchResult> {
 	const url = result.details.url;
 	if (shouldSkipCache(url)) return result;
+
+	// Skip the cache write when the result is a fallback from
+	// a transient provider error. The user should be able to
+	// retry the URL and have the next call re-attempt the
+	// browser; a cached fallback defeats that.
+	const pe = result.details.providerError;
+	if (pe && isTransientProviderErrorReason(pe.reason)) {
+		const message = `webfetch: cache write rejected — provider ${pe.provider} failed transiently (${pe.reason}); next call will re-attempt`;
+		notify?.(message, 'warn');
+		result.details.notify = message;
+		return result;
+	}
 
 	const entry = buildCacheEntry(result);
 	if (!entry) return result;
