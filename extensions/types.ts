@@ -125,6 +125,25 @@ export interface WebfetchDetails {
 	 */
 	pageTitle?: string;
 	/**
+	 * Provider error surfaced on the fallback path. Populated
+	 * when a provider threw / returned a transient error and
+	 * the fetch service fell back to static fetch. The
+	 * `reason` field gates the cache write: a `timeout` or
+	 * `navigation_failed` reason is treated as transient
+	 * (the next call re-attempts the browser); other reasons
+	 * are deterministic and safe to cache. The `message` is
+	 * the original error text; the `provider` is the provider
+	 * that failed (e.g. `default`).
+	 *
+	 * Surfaced in the user-facing header so the user can tell
+	 * *why* the browser was abandoned (review finding 6 / 1).
+	 */
+	providerError?: {
+		provider: string;
+		reason: 'unknown' | 'timeout' | 'navigation_failed' | 'low_text_ratio';
+		message: string;
+	};
+	/**
 	 * Absolute path to the session work dir for the research
 	 * subagent. `inputFile` and `inputRawFile` (when set) live
 	 * under it. Populated on the research path; `undefined` for
@@ -170,6 +189,13 @@ export interface ProviderConfig {
 	waitFor?: 'networkidle' | 'domcontentloaded';
 	forceProvider?: string;
 	github?: GitHubFetchOptions;
+	/**
+	 * Page-specific denylist selectors. Merged with the
+	 * default provider's `PAGE_DENYLIST_EXTRA` stack. Used by
+	 * tests and downstream callers to extend the default
+	 * noise filter.
+	 */
+	extraDenylistSelectors?: ReadonlyArray<string>;
 }
 
 export interface ProviderCapabilities {
@@ -216,6 +242,19 @@ export interface ProviderFetchResult {
 	 * only). Forwarded onto `WebfetchDetails.processedAs`.
 	 */
 	processedAs?: 'spa' | 'html' | 'static';
+	/**
+	 * Provider error surfaced on the fallback path. The fetch
+	 * service forwards it onto `WebfetchDetails.providerError`
+	 * so the user can tell *why* the provider was abandoned
+	 * (timeout, navigation failure, etc.). Optional; the
+	 * default provider sets it on the catch path; other
+	 * providers can leave it `undefined`.
+	 */
+	providerError?: {
+		provider: string;
+		reason: 'unknown' | 'timeout' | 'navigation_failed' | 'low_text_ratio';
+		message: string;
+	};
 }
 
 export interface WebfetchProvider {

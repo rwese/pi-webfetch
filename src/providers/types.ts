@@ -127,6 +127,14 @@ export interface ProviderConfig {
   proxy?: string;
   /** GitHub-specific fetch options */
   github?: GitHubFetchOptions;
+  /**
+   * Page-specific denylist selectors. Merged with the default
+   * provider's `PAGE_DENYLIST_EXTRA` stack. Used by tests and
+   * downstream callers to extend the default noise filter
+   * (e.g. custom donation banners, cookie walls, site
+   * interstitials).
+   */
+  extraDenylistSelectors?: ReadonlyArray<string>;
 }
 
 /**
@@ -178,13 +186,44 @@ export interface WebfetchProvider {
 }
 
 /**
+ * Classified cause of a `ProviderError`. The fetch service
+ * uses the reason to decide whether the fallback result is
+ * worth caching (a transient reason like `timeout` or
+ * `navigation_failed` should not poison the cache; a
+ * deterministic reason like `low_text_ratio` is a successful
+ * classification of the rendered page and is safe to cache).
+ *
+ * - `unknown` — the provider could not classify the cause.
+ * - `timeout` — the underlying browser subprocess exceeded
+ *   its budget (per-call or per-`get`).
+ * - `navigation_failed` — the browser rendered a Chromium
+ *   net-error page (DNS, connection refused, SSL error, …)
+ *   rather than the requested URL.
+ * - `low_text_ratio` — the rendered body did not contain
+ *   enough prose to confidently extract; the provider fell
+ *   back to plain text.
+ */
+export type ProviderErrorReason =
+  | 'unknown'
+  | 'timeout'
+  | 'navigation_failed'
+  | 'low_text_ratio';
+
+/**
  * Error class for provider-specific errors
  */
 export class ProviderError extends Error {
   constructor(
     message: string,
     public readonly providerName: string,
-    public readonly originalError?: Error
+    public readonly originalError?: Error,
+    /**
+     * Classified cause. Optional for back-compat with the
+     * pre-v0.9.0 codebase; new call sites should pass a
+     * value. The fetch service uses the reason to gate the
+     * cache write on transient failures.
+     */
+    public readonly reason: ProviderErrorReason = 'unknown',
   ) {
     super(`[${providerName}] ${message}`);
     this.name = 'ProviderError';
