@@ -80,7 +80,7 @@ webfetch --url "https://github.com/user/repo/issues/123" --include-comments
   issues and PRs. When off, a `> Tip:` discovery hint is appended to
   the content and surfaced as `details.githubHint` / `metadata.githubHint`.
 - `timeout` - Wall-clock budget in milliseconds for the research
-  subagent (only used when `query` is set). **Default: 180000**
+  subagent (only used when `query` is set). **Default: 300000**
   (3 min). Increase for large pages or complex queries; the subagent
   is killed with `Pi agent timed out after <ms>ms` if the budget is
   exhausted, and the resumable-session flow (see below) still applies.

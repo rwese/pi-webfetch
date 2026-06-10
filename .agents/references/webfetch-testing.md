@@ -171,7 +171,7 @@ node /Users/wese/Repos/github.com/rwese/pi-webfetch/dist/extensions/cli.js provi
   mentioned "Archimedes" since 2001). If a marker disappears,
   update the matrix; do not change the test plan to mask a real
   regression.
-- **Risk:** calls 9, 10, 13 are slow (≥3 minutes each by default
+- **Risk:** calls 9, 10, 13 are slow (≥5 minutes each by default
   budget `DEFAULT_PI_AGENT_TIMEOUT_MS`). *Mitigation:* the matrix
   is the slow path. Keep it out of CI; gate it on manual review
   and on a long-running job.

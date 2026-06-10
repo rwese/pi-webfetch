@@ -102,7 +102,7 @@ export interface PiRpcClientOptions {
 export interface PiRpcRunOptions {
 	/** The prompt to send. */
 	prompt: string;
-	/** Wall-clock budget in ms. Default: 180000 (3 min). */
+	/** Wall-clock budget in ms. Default: 300000 (5 min). */
 	timeoutMs?: number;
 }
 

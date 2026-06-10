@@ -30,7 +30,7 @@ export const WEBFETCH_TOOL_PARAMS = Type.Object({
 		Type.Integer({
 			minimum: 1,
 			description:
-				'Wall-clock budget in milliseconds for the research subagent (only used when `query` is set). Defaults to 180000 (3 min). Use a larger value for large pages or complex queries.',
+				'Wall-clock budget in milliseconds for the research subagent (only used when `query` is set). Defaults to 300000 (5 min). Use a larger value for large pages or complex queries.',
 		}),
 	),
 	cacheTtlMs: Type.Optional(

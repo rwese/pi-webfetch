@@ -99,7 +99,7 @@ export interface SpawnPiAgentOptions {
  * `--timeout` flag (CLI) / `timeout` field (MCP / tool).
  */
 // fallow-ignore-next-line unused-exports
-export const DEFAULT_PI_AGENT_TIMEOUT_MS = 180_000;
+export const DEFAULT_PI_AGENT_TIMEOUT_MS = 300_000;
 
 /** Default skills for research queries */
 // fallow-ignore-next-line unused-exports
@@ -228,11 +228,10 @@ export interface ResearchPromptInput {
  * demand, which keeps the LLM context small and makes the prompt
  * stable across very different page sizes.
  *
- * The instructions section is short and query-focused: the goal is
- * to answer the query, not to produce a generic analysis. Generic
- * boilerplate ("provide a thorough, well-structured response")
- * tends to push the subagent toward verbose output that buries
- * the actual answer.
+ * The instruction block is directive-first: the subagent is told
+ * what to produce and what to avoid, with a short tool-reference
+ * section at the bottom. No generic "provide a thorough analysis"
+ * boilerplate.
  */
 export function buildResearchPrompt(input: ResearchPromptInput): string {
 	const { query, url, cwd, sessionName, sessionId, inputFile, inputRawFile } = input;
@@ -245,7 +244,7 @@ export function buildResearchPrompt(input: ResearchPromptInput): string {
 	if (inputFile) contextLines.push(`Input (markdown): ${inputFile}`);
 	contextLines.push(`Input (raw): ${inputRawFile ?? '(not available)'}`);
 
-	return `# Research Query
+	return `# Answer the query below. Use the file paths to load content.
 
 ${contextLines.join('\n')}
 
@@ -255,28 +254,16 @@ ${query}
 
 ## Instructions
 
-Read the input file(s) above and answer the query. Be concise and direct; do not pad with generic analysis.
-
-- Use \`read <inputFile>\` to load the markdown.
-- If a raw input is available, use \`read <inputRawFile>\` to grep the original markup (the markdown conversion sometimes drops metadata, hidden JSON, or attribute values).
-- Use \`grep\` / \`bash\` to search within the input files.
-- If the query asks for specific items, find them in the input or fetch them with \`bash\` + \`curl\` / \`webfetch\`.
-- If the query asks for endpoints or URLs, list them with short descriptions.
-- If the query asks for a summary, summarize - do not enumerate.
+- Read the input markdown at \`${inputFile}\` with the \`read\` tool.
+- If a raw input is available, use \`read ${inputRawFile ?? '<raw-input>'}\` to grep the original markup (the markdown conversion may drop metadata, hidden JSON, or attribute values).
+- Answer the query directly. No preamble, no "Based on the content,", no "Here is a summary:".
+- Be concise. If the answer is a list, give a plain list. If it is a description, give 1–3 sentences.
+- If the query asks for specific items (endpoints, links, values), extract them exactly. Do not summarise them away.
+- If the query asks for a summary, summarise — do not enumerate.
 
 ## Tools
 
 read, grep, find, ls, bash
-
-## Skills
-
-agent-browser (browser automation), planning (structured analysis)
-
-## Output
-
-Write your final answer below this line. Stay focused on the query.
-
----
 `;
 }
 

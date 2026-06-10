@@ -126,7 +126,7 @@ function formatToolEvent(event: PiRpcToolEvent, inputFiles: ResearchInputFiles):
  * @param timeout - Optional per-call override (ms) for the spawned
  *                       research subagent. Falls back to the spawn
  *                       default (`DEFAULT_PI_AGENT_TIMEOUT_MS` in
- *                       `extensions/pi-agent.ts`, currently 180000).
+ *                       `extensions/pi-agent.ts`, currently 300000).
  * @returns FetchResult with analysis or error content
  *
  * @example

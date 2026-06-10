@@ -71,7 +71,7 @@ Options:
   --include-comments     Include issue comments and PR review threads (gh-cli).
                          Default: off (a discovery hint is shown instead).
   --timeout <ms>         Wall-clock budget in milliseconds for the research
-                         subagent. Defaults to 180000 (3 min). Use a larger
+                         subagent. Defaults to 300000 (5 min). Use a larger
                          value for large pages or complex queries.
   --cache-ttl <ms>       Per-call cache TTL override in milliseconds. Defaults
                          to 3600000 (1 hour). Cached entries older than the
@@ -294,7 +294,7 @@ export async function runCli(
 			const includeComments = parseBoolean(parsed.flags.includeComments);
 			// Default 180s matches the spawn default; users can still
 			// raise it per-call for unusually large / complex pages.
-			const timeout = parseTimeout(parsed.flags.timeout, 180000);
+			const timeout = parseTimeout(parsed.flags.timeout, 300000);
 			const cacheTtlMs = parseCacheTtl(parsed.flags.cacheTtl);
 			const providerOptions =
 				includeComments !== undefined || cacheTtlMs !== undefined

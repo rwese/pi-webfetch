@@ -111,7 +111,7 @@ describe('runCli', () => {
 			expect.any(Function),
 			expect.any(Function),
 			'cli',
-			180000,
+			300000,
 		);
 		expect(JSON.parse(stdoutText())).toEqual({
 			content: [{ type: 'text', text: 'fetched https://example.com' }],
@@ -195,7 +195,7 @@ describe('runCli', () => {
 			expect.any(Function),
 			expect.any(Function),
 			'cli',
-			180000,
+			300000,
 		);
 	});
 
@@ -221,7 +221,7 @@ describe('runCli', () => {
 			expect.any(Function),
 			expect.any(Function),
 			'cli',
-			180000,
+			300000,
 		);
 	});
 

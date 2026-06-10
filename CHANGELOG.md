@@ -28,6 +28,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   re-fire guard, 1 end-to-end against a real
   `agent-browser`).
 
+### Changed (2026-06-10 timeout bump)
+
+- **Research subagent timeout bumped from 180s to 300s (5 min).**
+  The previous 3-minute default was still too tight for
+  complex research queries on large pages, causing
+  `Pi agent timed out after 180000ms`. The new default is
+  `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`,
+  300000ms = 5 min). All user-facing docs, the CLI help,
+  and the MCP schema description updated accordingly.
+
 ### Changed (2026-06-07 browser-session-cleanup audit)
 
 - **Refactor (test): deterministic error-handling test.**

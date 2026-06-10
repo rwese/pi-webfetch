@@ -71,7 +71,7 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Provider abstraction: `WebfetchProvider` with `name`, `priority`, `capabilities`, `isAvailable`, `detectUrl`, and `fetch`.
 - Provider priority: `default` 10, `gh-cli` 8, `clawfetch` 5. GitHub URLs prefer `gh-cli` when authenticated.
 - Markdown post-processing removes auto anchors, extracts embedded images to temp files, and preserves code blocks/tables.
-- Research mode fetches content, spawns a pi subprocess for analysis, and falls back to fetched content if analysis fails. The spawn default budget is `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`, 180000ms = 3 min); the CLI / MCP / pi tool each expose a `timeout` knob to override per call.
+- Research mode fetches content, spawns a pi subprocess for analysis, and falls back to fetched content if analysis fails. The spawn default budget is `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`, 300000ms = 5 min); the CLI / MCP / pi tool each expose a `timeout` knob to override per call.
 - Research mode writes the fetched content to a session-keyed work dir (`<tmpdir>/pi-webfetch-research/<sessionId>/input.md`, plus `input_raw.<ext>` when the provider surfaces raw content) and threads the absolute paths into the subagent's spawn options. The prompt is lean: it surfaces the URL, the parent's cwd, the session name, and the file paths; the subagent `read`s / `grep`s the content on demand. The work dir / file paths are returned on `WebfetchDetails` (`workDir`, `inputFile`, `inputRawFile`) on both the success and the agent-error paths.
 - **JSON-RPC transport for the research subagent.** The subagent
   is driven as a real, named, persistent `pi --mode rpc` session

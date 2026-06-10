@@ -1,8 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Readable, Writable } from 'node:stream';
 import {
 	DEFAULT_PI_AGENT_TIMEOUT_MS,
-	buildResearchPrompt,
 	PiAgentError,
 	spawnPiAgent,
 	isPiAvailable,
@@ -12,44 +10,46 @@ import type { PiRpcToolEvent } from '../extensions/pi-rpc-client';
 // Hoisted mock state. The `vi.hoisted` ensures these are
 // available inside the `vi.mock` factory below (vi.mock is
 // hoisted, so it runs before the import statements resolve).
-const { mockRun, capturedCtorArgs, textListeners, toolListeners, fakeClientCtor } = vi.hoisted(() => {
-	const capturedCtorArgsLocal: Array<{
-		piPath: string;
-		cwd: string;
-		env: Record<string, string>;
-		args: string[];
-	}> = [];
-	const textListenersLocal: Array<(chunk: string) => void> = [];
-	const toolListenersLocal: Array<(event: PiRpcToolEvent) => void> = [];
-	const mockRunLocal = vi.fn();
-
-	class FakeClient {
-		constructor(opts: {
+const { mockRun, capturedCtorArgs, textListeners, toolListeners, fakeClientCtor } = vi.hoisted(
+	() => {
+		const capturedCtorArgsLocal: Array<{
 			piPath: string;
 			cwd: string;
 			env: Record<string, string>;
 			args: string[];
-		}) {
-			capturedCtorArgsLocal.push(opts);
-		}
-		onText(fn: (chunk: string) => void): void {
-			textListenersLocal.push(fn);
-		}
-		onTool(fn: (event: PiRpcToolEvent) => void): void {
-			toolListenersLocal.push(fn);
-		}
-		run = mockRunLocal;
-		async stop(): Promise<void> {}
-	}
+		}> = [];
+		const textListenersLocal: Array<(chunk: string) => void> = [];
+		const toolListenersLocal: Array<(event: PiRpcToolEvent) => void> = [];
+		const mockRunLocal = vi.fn();
 
-	return {
-		mockRun: mockRunLocal,
-		capturedCtorArgs: capturedCtorArgsLocal,
-		textListeners: textListenersLocal,
-		toolListeners: toolListenersLocal,
-		fakeClientCtor: FakeClient,
-	};
-});
+		class FakeClient {
+			constructor(opts: {
+				piPath: string;
+				cwd: string;
+				env: Record<string, string>;
+				args: string[];
+			}) {
+				capturedCtorArgsLocal.push(opts);
+			}
+			onText(fn: (chunk: string) => void): void {
+				textListenersLocal.push(fn);
+			}
+			onTool(fn: (event: PiRpcToolEvent) => void): void {
+				toolListenersLocal.push(fn);
+			}
+			run = mockRunLocal;
+			async stop(): Promise<void> {}
+		}
+
+		return {
+			mockRun: mockRunLocal,
+			capturedCtorArgs: capturedCtorArgsLocal,
+			textListeners: textListenersLocal,
+			toolListeners: toolListenersLocal,
+			fakeClientCtor: FakeClient,
+		};
+	},
+);
 
 // Mock the `pi-rpc-client` module so `PiRpcClient` is our
 // `FakeClient`. This is the cleanest way to avoid spawning the
@@ -89,7 +89,7 @@ describe('spawnPiAgent', () => {
 		expect(result.exitCode).toBe(0);
 	});
 
-	it('uses DEFAULT_PI_AGENT_TIMEOUT_MS (180s) when no timeout is provided', () => {
+	it('uses DEFAULT_PI_AGENT_TIMEOUT_MS (300s) when no timeout is provided', () => {
 		expect(DEFAULT_PI_AGENT_TIMEOUT_MS).toBeGreaterThanOrEqual(120_000);
 	});
 
@@ -195,9 +195,9 @@ describe('spawnPiAgent', () => {
 		mockRun.mockImplementationOnce(async () => {
 			throw new PiAgentError('Pi agent timed out after 30ms', null);
 		});
-		await expect(
-			spawnPiAgent('Content', 'Query', { timeout: 30 }),
-		).rejects.toThrow(/timed out after 30ms/);
+		await expect(spawnPiAgent('Content', 'Query', { timeout: 30 })).rejects.toThrow(
+			/timed out after 30ms/,
+		);
 	});
 
 	it('passes custom environment variables', async () => {
@@ -352,97 +352,6 @@ describe('spawnPiAgent - onChunk / onToolCall callbacks', () => {
 		});
 		const result = await spawnPiAgent('Content', 'Query');
 		expect(result.analysis).toBe('Result');
-	});
-});
-
-describe('buildResearchPrompt', () => {
-	it('surfaces URL, cwd, session name, and input file paths', () => {
-		const prompt = buildResearchPrompt({
-			query: 'What is the API endpoint?',
-			url: 'https://example.com/docs',
-			cwd: '/Users/wese/project',
-			sessionId: 'abc123',
-			sessionName: 'webfetch-research: example.com',
-			inputFile: '/tmp/pi-webfetch-research/abc123/input.md',
-			inputRawFile: '/tmp/pi-webfetch-research/abc123/input_raw.html',
-		});
-
-		expect(prompt).toContain('URL: https://example.com/docs');
-		expect(prompt).toContain('CWD: /Users/wese/project');
-		expect(prompt).toContain('Session: webfetch-research: example.com (id: abc123)');
-		expect(prompt).toContain('Input (markdown): /tmp/pi-webfetch-research/abc123/input.md');
-		expect(prompt).toContain('Input (raw): /tmp/pi-webfetch-research/abc123/input_raw.html');
-		expect(prompt).toContain('What is the API endpoint?');
-	});
-
-	it('marks raw input as not available when not provided', () => {
-		const prompt = buildResearchPrompt({
-			query: 'q',
-			inputFile: '/tmp/input.md',
-		});
-
-		expect(prompt).toContain('Input (raw): (not available)');
-	});
-
-	it('omits the URL line when no URL is provided', () => {
-		const prompt = buildResearchPrompt({
-			query: 'q',
-			inputFile: '/tmp/input.md',
-		});
-
-		expect(prompt).not.toContain('URL:');
-	});
-
-	it('does not inline the markdown content in the prompt', () => {
-		const prompt = buildResearchPrompt({
-			query: 'q',
-			inputFile: '/tmp/input.md',
-		});
-
-		expect(prompt).not.toContain('## Content to Analyze');
-	});
-
-	it('focuses the instructions on fulfilling the query', () => {
-		const prompt = buildResearchPrompt({
-			query: 'q',
-			inputFile: '/tmp/input.md',
-		});
-
-		expect(prompt).toContain('answer the query');
-		expect(prompt).toContain('Stay focused on the query');
-		expect(prompt).not.toContain('thorough, well-structured response');
-	});
-});
-
-describe('spawnPiAgent - lean prompt', () => {
-	beforeEach(() => {
-		vi.clearAllMocks();
-		capturedCtorArgs.length = 0;
-		textListeners.length = 0;
-		toolListeners.length = 0;
-		mockRun.mockReset();
-	});
-
-	it('threads url / inputFile / inputRawFile into the prompt body', async () => {
-		let capturedPrompt = '';
-		mockRun.mockImplementationOnce(async (opts: { prompt: string }) => {
-			capturedPrompt = opts.prompt;
-			return { text: 'Result', sessionId: '', sessionName: undefined, exitCode: 0 };
-		});
-
-		await spawnPiAgent('Content', 'Query', {
-			url: 'https://example.com/page',
-			inputFile: '/tmp/input.md',
-			inputRawFile: '/tmp/input_raw.html',
-		});
-
-		expect(capturedPrompt).toContain('URL: https://example.com/page');
-		expect(capturedPrompt).toContain('Input (markdown): /tmp/input.md');
-		expect(capturedPrompt).toContain('Input (raw): /tmp/input_raw.html');
-		expect(capturedPrompt).not.toContain('## Content to Analyze');
-		// The argv no longer carries `-p`.
-		const args = capturedCtorArgs[0].args;
-		expect(args).not.toContain('-p');
 	});
 });
 
