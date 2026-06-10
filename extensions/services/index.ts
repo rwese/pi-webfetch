@@ -35,11 +35,7 @@ export {
 } from './cache-service.js';
 
 // Static fetch
-export {
-	staticFetch,
-	handleBinary,
-	__resetStaticOnlyWarningForTest,
-} from './static-fetch.js';
+export { staticFetch, handleBinary, __resetStaticOnlyWarningForTest } from './static-fetch.js';
 
 // Header building
 export { buildFetchHeader } from './header-builder.js';

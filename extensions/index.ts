@@ -15,9 +15,7 @@ export type {
 } from './types.js';
 
 // Tools - only webfetch
-import {
-	registerWebfetchTool,
-} from './tools/index.js';
+import { registerWebfetchTool } from './tools/index.js';
 
 // Commands
 import {

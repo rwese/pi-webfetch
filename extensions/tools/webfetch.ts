@@ -165,7 +165,9 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 							...(params.includeComments !== undefined
 								? { github: { includeComments: params.includeComments } }
 								: {}),
-							...(params.cacheTtlMs !== undefined ? { cacheTtlMs: params.cacheTtlMs } : {}),
+							...(params.cacheTtlMs !== undefined
+								? { cacheTtlMs: params.cacheTtlMs }
+								: {}),
 						}
 					: undefined;
 			const result = await webfetchResearch(

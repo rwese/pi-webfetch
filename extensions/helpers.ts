@@ -6,11 +6,7 @@
  */
 
 // Fetch phases
-export {
-	type FetchPhase,
-	FETCH_PHASE_LABELS,
-	getCommandPhaseLabel,
-} from './fetch-phases.js';
+export { type FetchPhase, FETCH_PHASE_LABELS, getCommandPhaseLabel } from './fetch-phases.js';
 
 // Formatting utilities
 export { getTempFilePath, formatBytes, truncateToSize } from './utils/formatting.js';

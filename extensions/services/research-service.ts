@@ -34,10 +34,7 @@ type OnUpdateCallback = AgentToolUpdateCallback<Record<string, unknown>>;
 
 /** Notification channel for the agent-error path. The surface decides
  *  what to do with the message (TUI notify, stderr line, etc.). */
-export type ResearchNotify = (
-	message: string,
-	level: 'info' | 'warn' | 'error',
-) => void;
+export type ResearchNotify = (message: string, level: 'info' | 'warn' | 'error') => void;
 
 /** Streaming callback configuration for webfetch */
 export interface StreamingConfig {

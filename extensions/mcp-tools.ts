@@ -91,7 +91,9 @@ export function registerWebfetchMcpTools(
 					undefined,
 					includeComments !== undefined || cacheTtlMs !== undefined
 						? {
-								...(includeComments !== undefined ? { github: { includeComments } } : {}),
+								...(includeComments !== undefined
+									? { github: { includeComments } }
+									: {}),
 								...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
 							}
 						: includeComments !== undefined

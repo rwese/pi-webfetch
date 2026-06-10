@@ -63,7 +63,9 @@ const childProcessModule = require('node:child_process') as { spawn: NodeSpawn }
  * signature cannot satisfy.
  */
 const defaultSpawn = ((...args: unknown[]) =>
-	(childProcessModule.spawn as (...a: unknown[]) => ChildProcess)(...args)) as unknown as NodeSpawn;
+	(childProcessModule.spawn as (...a: unknown[]) => ChildProcess)(
+		...args,
+	)) as unknown as NodeSpawn;
 
 /** Phase mapping for tool events. */
 export type ToolPhase = 'reading' | 'executing' | 'thinking';
@@ -422,7 +424,11 @@ export class PiRpcClient {
 			this.pending = null;
 			if (data.success === false) {
 				pending.reject(
-					new Error(typeof data.error === 'string' ? data.error : `RPC command ${pending.command} failed`),
+					new Error(
+						typeof data.error === 'string'
+							? data.error
+							: `RPC command ${pending.command} failed`,
+					),
 				);
 			} else {
 				pending.resolve(data);
@@ -592,7 +598,10 @@ export function serializeJsonLine(value: unknown): string {
  * JSON strings). It splits on `\n` only, joining `\r\n` to `\n` for
  * tolerant input.
  */
-export function attachJsonlLineReader(stream: Readable, onLine: (line: string) => void): () => void {
+export function attachJsonlLineReader(
+	stream: Readable,
+	onLine: (line: string) => void,
+): () => void {
 	const decoder = new StringDecoder('utf8');
 	let buffer = '';
 	const emitLine = (line: string) => {

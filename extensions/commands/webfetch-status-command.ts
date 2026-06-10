@@ -17,12 +17,7 @@ const PROVIDER_INFO: Record<string, { desc: string; features: string[] }> = {
 	},
 	clawfetch: {
 		desc: 'clawfetch CLI',
-		features: [
-			'Playwright',
-			'Readability extraction',
-			'GitHub fast-path',
-			'Reddit RSS',
-		],
+		features: ['Playwright', 'Readability extraction', 'GitHub fast-path', 'Reddit RSS'],
 	},
 	'gh-cli': {
 		desc: 'GitHub CLI',

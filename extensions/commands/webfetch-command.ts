@@ -40,7 +40,10 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 						query = afterQuote.slice(1, -1).trim() || undefined;
 					} else if (afterQuote.startsWith("'")) {
 						const singleEnd = afterQuote.indexOf("'", 1);
-						query = singleEnd > 0 ? afterQuote.slice(1, singleEnd) : afterQuote.slice(1).trim() || undefined;
+						query =
+							singleEnd > 0
+								? afterQuote.slice(1, singleEnd)
+								: afterQuote.slice(1).trim() || undefined;
 					} else {
 						query = afterQuote || undefined;
 					}
@@ -58,7 +61,10 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 						query = afterQuote.slice(1, -1).trim() || undefined;
 					} else if (afterQuote.startsWith('"')) {
 						const doubleEnd = afterQuote.indexOf('"', 1);
-						query = doubleEnd > 0 ? afterQuote.slice(1, doubleEnd) : afterQuote.slice(1).trim() || undefined;
+						query =
+							doubleEnd > 0
+								? afterQuote.slice(1, doubleEnd)
+								: afterQuote.slice(1).trim() || undefined;
 					} else {
 						query = afterQuote || undefined;
 					}
@@ -72,8 +78,10 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 					url = trimmed.slice(0, spaceIdx);
 					// Strip surrounding quotes from query if present
 					const queryText = trimmed.slice(spaceIdx + 1).trim();
-					if ((queryText.startsWith('"') && queryText.endsWith('"')) ||
-						(queryText.startsWith("'") && queryText.endsWith("'"))) {
+					if (
+						(queryText.startsWith('"') && queryText.endsWith('"')) ||
+						(queryText.startsWith("'") && queryText.endsWith("'"))
+					) {
 						query = queryText.slice(1, -1).trim() || undefined;
 					} else {
 						query = queryText || undefined;
@@ -96,7 +104,10 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 				frames: ['🌐', '🌎', '🌍', '🌏', '🌗', '🌘'],
 				intervalMs: 150,
 			});
-			ctx.ui.setStatus('webfetch', query ? '🔍 Starting research...' : '🌐 Starting fetch...');
+			ctx.ui.setStatus(
+				'webfetch',
+				query ? '🔍 Starting research...' : '🌐 Starting fetch...',
+			);
 
 			try {
 				const result = await webfetchResearch(
@@ -105,7 +116,10 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 					undefined,
 					// Phase-based status updates using shared labels
 					(status, phase) => {
-						ctx.ui.setStatus('webfetch', phase ? getCommandPhaseLabel(phase, !!query) : status);
+						ctx.ui.setStatus(
+							'webfetch',
+							phase ? getCommandPhaseLabel(phase, !!query) : status,
+						);
 					},
 					undefined,
 					undefined,

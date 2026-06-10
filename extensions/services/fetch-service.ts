@@ -11,11 +11,7 @@ import type {
 	ProviderFetchResult,
 	GitHubFetchOptions,
 } from '../types.js';
-import {
-	removeMarkdownAnchors,
-	extractEmbeddedImages,
-	unescapeBrackets,
-} from '../markdown.js';
+import { removeMarkdownAnchors, extractEmbeddedImages, unescapeBrackets } from '../markdown.js';
 import { providerDisplayName } from '../providers/display-name.js';
 import { truncateToSize, getTempFilePath } from '../utils/formatting.js';
 import { isLikelyBinaryUrl } from '../utils/url.js';
@@ -128,10 +124,8 @@ export async function fetchUrl(
 
 	// Check if URL is likely binary
 	if (isLikelyBinaryUrl(url)) {
-		return cacheFetchResult(
-			await handleBinary(url, fetchFn),
-			cacheKey,
-			(message, level) => writeNotify(options, message, level),
+		return cacheFetchResult(await handleBinary(url, fetchFn), cacheKey, (message, level) =>
+			writeNotify(options, message, level),
 		);
 	}
 
@@ -196,10 +190,8 @@ export async function fetchUrl(
 		// the cache write) or safe to persist.
 		fallback.details.providerError = providerError;
 	}
-	return cacheFetchResult(
-		fallback,
-		cacheKey,
-		(message, level) => writeNotify(options, message, level),
+	return cacheFetchResult(fallback, cacheKey, (message, level) =>
+		writeNotify(options, message, level),
 	);
 }
 
@@ -296,9 +288,7 @@ async function processProviderResult(
 		// these as `undefined`; the spread keeps the field out of
 		// the result object in that case.
 		...(result.rawContent !== undefined ? { rawContent: result.rawContent } : {}),
-		...(result.rawContentType !== undefined
-			? { rawContentType: result.rawContentType }
-			: {}),
+		...(result.rawContentType !== undefined ? { rawContentType: result.rawContentType } : {}),
 		// Content-validation signals: forward the provider's
 		// `finalUrl` (the URL the provider actually rendered, after
 		// redirects) and the rendered `<title>` (when surfaced via
@@ -365,10 +355,8 @@ export async function webfetchSPA(
 		writeNotify(options, warning, 'warn');
 		const fallback = await staticFetch(url, fetch);
 		fallback.details.providerError = providerError;
-		return cacheFetchResult(
-			fallback,
-			cacheKey,
-			(message, level) => writeNotify(options, message, level),
+		return cacheFetchResult(fallback, cacheKey, (message, level) =>
+			writeNotify(options, message, level),
 		);
 	}
 

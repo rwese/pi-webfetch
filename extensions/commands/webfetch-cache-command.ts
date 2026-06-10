@@ -5,12 +5,7 @@
  */
 
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
-import {
-	clearAllCache,
-	clearCache,
-	getCacheStats,
-	parseDurationToMs,
-} from '../cache.js';
+import { clearAllCache, clearCache, getCacheStats, parseDurationToMs } from '../cache.js';
 
 /**
  * Format a millisecond count as a short, human-readable duration.
@@ -46,10 +41,7 @@ function parseClearCacheArgs(raw: string): {
 	dryRun: boolean;
 	error?: string;
 } {
-	const tokens = raw
-		.trim()
-		.split(/\s+/)
-		.filter(Boolean);
+	const tokens = raw.trim().split(/\s+/).filter(Boolean);
 	const result: {
 		url?: string;
 		all: boolean;

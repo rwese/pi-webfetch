@@ -38,7 +38,7 @@ export async function closeAllProviders(sessionId?: symbol): Promise<void> {
 /** Close all providers across all sessions */
 export async function closeAllSessionsProviders(): Promise<void> {
 	await Promise.all(
-		Array.from(sessionProviders.keys()).map((key) => closeAllProviders(key as symbol))
+		Array.from(sessionProviders.keys()).map((key) => closeAllProviders(key as symbol)),
 	);
 }
 

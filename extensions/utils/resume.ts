@@ -87,9 +87,7 @@ export function deriveSessionName(url: string): string {
 export function formatResumeHint(input: ResumeHintInput): ResumeHint {
 	const { sessionId, sessionName, source, url, query, errorMessage } = input;
 	const command =
-		source === 'extension'
-			? `pi --session ${sessionId}`
-			: buildCliRerunCommand(url, query);
+		source === 'extension' ? `pi --session ${sessionId}` : buildCliRerunCommand(url, query);
 
 	const messageParts =
 		source === 'extension'

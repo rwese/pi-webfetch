@@ -104,10 +104,7 @@ export async function setCache(
 /**
  * Get cached content for a URL
  */
-export async function getCache(
-	url: string,
-	options?: CacheKeyOptions,
-): Promise<CacheEntry | null> {
+export async function getCache(url: string, options?: CacheKeyOptions): Promise<CacheEntry | null> {
 	try {
 		const cachePath = getCachePath(url, options);
 		const data = await readFile(cachePath, 'utf-8');
@@ -149,10 +146,7 @@ export async function getCacheAge(url: string, options?: CacheKeyOptions): Promi
  * `cacheKey` that was used for the cached read/write to drop the
  * matching entry.
  */
-export async function clearCache(
-	url: string,
-	options?: CacheKeyOptions,
-): Promise<boolean> {
+export async function clearCache(url: string, options?: CacheKeyOptions): Promise<boolean> {
 	try {
 		const cachePath = getCachePath(url, options);
 		await rm(cachePath);

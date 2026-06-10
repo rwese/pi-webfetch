@@ -5,7 +5,8 @@
  */
 
 /** Binary file extensions pattern */
-const BINARY_EXTENSIONS = /\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|mp3|wav|pdf|zip|tar|gz|rar|7z|doc|docx|xls|xlsx|ppt|pptx)$/i;
+const BINARY_EXTENSIONS =
+	/\.(png|jpg|jpeg|gif|webp|svg|ico|mp4|webm|mp3|wav|pdf|zip|tar|gz|rar|7z|doc|docx|xls|xlsx|ppt|pptx)$/i;
 
 /**
  * Check if URL likely points to binary content

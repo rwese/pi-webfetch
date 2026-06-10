@@ -226,9 +226,7 @@ export function buildCacheEntry(result: FetchResult): {
 		contentType: result.details.contentType,
 		status: result.details.status,
 		...(result.details.finalUrl !== undefined ? { finalUrl: result.details.finalUrl } : {}),
-		...(result.details.pageTitle !== undefined
-			? { pageTitle: result.details.pageTitle }
-			: {}),
+		...(result.details.pageTitle !== undefined ? { pageTitle: result.details.pageTitle } : {}),
 		provider: result.details.provider,
 		extractionMethod: result.details.extractionMethod,
 		cachedAt: Date.now(),
@@ -336,7 +334,7 @@ export async function getCachedResult(
 	const cached = await getCache(url, options);
 	if (!cached) return null;
 
-	const now = (options && 'now' in options && options.now ? options.now() : Date.now());
+	const now = options && 'now' in options && options.now ? options.now() : Date.now();
 	const ttl = options && 'cacheTtlMs' in options ? options.cacheTtlMs : undefined;
 	if (!isFresh(cached, now, ttl)) return null;
 
@@ -360,9 +358,7 @@ export async function getCachedResult(
 		// service can still write `input_raw.<ext>` when the fetch
 		// was served from cache.
 		...(cached.rawContent !== undefined ? { rawContent: cached.rawContent } : {}),
-		...(cached.rawContentType !== undefined
-			? { rawContentType: cached.rawContentType }
-			: {}),
+		...(cached.rawContentType !== undefined ? { rawContentType: cached.rawContentType } : {}),
 	};
 
 	// Append cache footer to content

@@ -103,20 +103,11 @@ export const DEFAULT_PI_AGENT_TIMEOUT_MS = 180_000;
 
 /** Default skills for research queries */
 // fallow-ignore-next-line unused-exports
-export const DEFAULT_RESEARCH_SKILLS = [
-	'agent-browser',
-	'planning',
-];
+export const DEFAULT_RESEARCH_SKILLS = ['agent-browser', 'planning'];
 
 /** Default tools enabled for research */
 // fallow-ignore-next-line unused-exports
-export const DEFAULT_RESEARCH_TOOLS = [
-	'read',
-	'grep',
-	'find',
-	'ls',
-	'bash',
-];
+export const DEFAULT_RESEARCH_TOOLS = ['read', 'grep', 'find', 'ls', 'bash'];
 
 export interface SpawnPiAgentResult {
 	/** The analysis result from the sub-agent */
@@ -249,11 +240,10 @@ export function buildResearchPrompt(input: ResearchPromptInput): string {
 	const contextLines: string[] = [];
 	if (url) contextLines.push(`URL: ${url}`);
 	if (cwd) contextLines.push(`CWD: ${cwd}`);
-	if (sessionName) contextLines.push(`Session: ${sessionName}${sessionId ? ` (id: ${sessionId})` : ''}`);
+	if (sessionName)
+		contextLines.push(`Session: ${sessionName}${sessionId ? ` (id: ${sessionId})` : ''}`);
 	if (inputFile) contextLines.push(`Input (markdown): ${inputFile}`);
-	contextLines.push(
-		`Input (raw): ${inputRawFile ?? '(not available)'}`,
-	);
+	contextLines.push(`Input (raw): ${inputRawFile ?? '(not available)'}`);
 
 	return `# Research Query
 
