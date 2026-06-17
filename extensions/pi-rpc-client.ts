@@ -374,10 +374,28 @@ export class PiRpcClient {
 		// Clean up active handlers when the run settles (success
 		// or failure). The agent_end path clears them too; this
 		// covers the timeout / exit paths.
+		//
+		// BUG-2026-06-17-JGCMZSET-CRONO: the `.finally()` mirror
+		// promise must be catch'd here, otherwise a rejected run
+		// (timeout / non-zero exit) propagates through the
+		// finally chain as a fresh unhandledRejection. The
+		// mirror runs *after* the awaited `run()` has settled,
+		// so the awaiting try/catch cannot catch it; the
+		// orphan promise leaks to Node's unhandledRejection
+		// handler and crashes the host (pi) agent. The
+		// cleanup itself is best-effort and the rejection
+		// has already been observed by the awaiter, so we
+		// swallow it here. See `test/pi-rpc-client.test.ts`
+		// > "does not surface a second unhandled rejection
+		// when run() times out".
 		agentEndPromise.finally(() => {
 			this.activeTextDeltaHandler = null;
 			this.activeToolStartHandler = null;
 			this.activeThinkingDeltaHandler = null;
+		}).catch(() => {
+			// Intentional no-op: the original rejection has
+			// already been delivered to the awaited run(); the
+			// finally-mirror must not re-surface it.
 		});
 
 		return agentEndPromise;

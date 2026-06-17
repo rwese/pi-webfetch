@@ -239,6 +239,42 @@ describe('PiRpcClient', () => {
 				client.run({ prompt: 'hi', timeoutMs: 200 }),
 			).rejects.toThrow(/timed out after 200ms/);
 		});
+
+		it('does not surface a second unhandled rejection when run() times out', async () => {
+			// BUG-2026-06-17-JGCMZSET-CRONO: a timed-out run()
+			// rejection propagated as `unhandledRejection`, which
+			// crashed the host pi agent. Root cause: the inner
+			// cleanup chain attached `.finally(() => ...)` to
+			// `agentEndPromise` and discarded the returned promise.
+			// When the run rejected, the `.finally()` mirror
+			// promise had no `.catch` and fired unhandledRejection.
+			// The fix is to attach `.catch(() => {})` so the
+			// cleanup mirror cannot leak the run's rejection.
+			//
+			// We pin the fix by capturing any
+			// `unhandledRejection` / `uncaughtException` that fires
+			// during a timed-out run and asserting the timeout
+			// rejection is the ONLY thing that fires (and only on
+			// the awaited promise, never as unhandled).
+			const unhandled: unknown[] = [];
+			const onUnhandled = (reason: unknown) => unhandled.push(reason);
+			process.on('unhandledRejection', onUnhandled);
+			process.on('uncaughtException', onUnhandled);
+			try {
+				const { client } = createFakePiRpc();
+				await expect(
+					client.run({ prompt: 'hi', timeoutMs: 30 }),
+				).rejects.toThrow(/timed out after 30ms/);
+				// Let any pending microtasks / timers resolve so
+				// the unhandledRejection event (if any) has a
+				// chance to fire.
+				await new Promise((r) => setTimeout(r, 50));
+				expect(unhandled).toEqual([]);
+			} finally {
+				process.off('unhandledRejection', onUnhandled);
+				process.off('uncaughtException', onUnhandled);
+			}
+		});
 	});
 
 	describe('text coalescing', () => {
