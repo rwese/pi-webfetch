@@ -48,6 +48,7 @@
 		"lint": "eslint extensions/",
 		"lint:fix": "eslint extensions/ --fix",
 		"format": "prettier --write extensions/",
+		"format:staged": "lint-staged",
 		"validate": "npm run typecheck && npm run lint && npm run test",
 		"version:patch": "npm version patch -m 'chore: Bump patch version' && git push && git push --tags",
 		"version:minor": "npm version minor -m 'feat: Bump minor version' && git push && git push --tags",
@@ -65,7 +66,7 @@
 		"zod": "^4.4.3"
 	},
 	"lint-staged": {
-		"**/*": "prettier --write"
+		"*.{js,cjs,mjs,jsx,ts,tsx,mts,cts,json,jsonc,yaml,yml,css,scss,html}": "prettier --write"
 	},
 	"devDependencies": {
 		"@mariozechner/pi-coding-agent": "latest",

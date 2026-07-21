@@ -49,7 +49,6 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 
 ## Behavior
 
-- Use absolute paths in commands and file references.
 - Prefer `rg`, `fd`, `just`, `gh`, `uv`, `python3`, and `pnpm` when appropriate.
 - For complex tasks, define TODOs before edits.
 - Respect dirty worktrees; do not revert user changes.
@@ -64,6 +63,7 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Direct CLI behavior changes require `test/cli.test.ts` updates and `npm run build`.
 - URL fetching regressions use `npm run report-url` and `npm run test:regression`.
 - Run linter and tests before committing.
+- Pre-commit runs `npm run format:staged`; let it format and re-stage supported source/config files instead of running broad manual `prettier --write` commands.
 - Pre-commit hooks are quality gates; fix causes instead of bypassing.
 
 ## Architecture Notes
