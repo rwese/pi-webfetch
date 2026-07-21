@@ -36,7 +36,7 @@ export function __resetStaticOnlyWarningForTest(): void {
 }
 import { convertGitHubToRaw } from '../utils/url.js';
 import { getTempFilePath, truncateToSize } from '../utils/formatting.js';
-import { buildFetchHeader } from './header-builder.js';
+import { buildFetchHeader, wrapUntrustedContent } from './header-builder.js';
 
 const MAX_MARKDOWN_SIZE = 100 * 1024;
 
@@ -144,7 +144,7 @@ async function handleMarkdownFetch(
 	};
 
 	return {
-		content: [{ type: 'text', text: buildFetchHeader(details) + finalText }],
+		content: [{ type: 'text', text: buildFetchHeader(details) + wrapUntrustedContent(finalText) }],
 		details,
 	};
 }
@@ -213,7 +213,7 @@ async function handleHtmlFetch(
 	};
 
 	return {
-		content: [{ type: 'text', text: buildFetchHeader(details) + markdown }],
+		content: [{ type: 'text', text: buildFetchHeader(details) + wrapUntrustedContent(markdown) }],
 		details,
 	};
 }
@@ -236,7 +236,7 @@ async function handleUnknownFetch(
 	};
 
 	return {
-		content: [{ type: 'text', text: buildFetchHeader(details) + text }],
+		content: [{ type: 'text', text: buildFetchHeader(details) + wrapUntrustedContent(text) }],
 		details,
 	};
 }
@@ -253,7 +253,7 @@ function buildErrorResult(url: string, error: unknown): FetchResult {
 	};
 
 	return {
-		content: [{ type: 'text', text: buildFetchHeader(details) + `Error: ${error}` }],
+		content: [{ type: 'text', text: buildFetchHeader(details) + wrapUntrustedContent(`Error: ${error}`) }],
 		details,
 	};
 }

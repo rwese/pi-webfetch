@@ -16,7 +16,7 @@ import { providerDisplayName } from '../providers/display-name.js';
 import { truncateToSize, getTempFilePath } from '../utils/formatting.js';
 import { isLikelyBinaryUrl } from '../utils/url.js';
 import { getExtensionFromContentType } from '../content-types.js';
-import { buildFetchHeader } from './header-builder.js';
+import { buildFetchHeader, wrapUntrustedContent } from './header-builder.js';
 import { cacheFetchResult, getCachedResult } from './cache-service.js';
 import { staticFetch, handleBinary } from './static-fetch.js';
 import { getProviderManager } from './session-manager.js';
@@ -300,7 +300,7 @@ async function processProviderResult(
 
 	return cacheFetchResult(
 		{
-			content: [{ type: 'text' as const, text: buildFetchHeader(details) + content }],
+			content: [{ type: 'text' as const, text: buildFetchHeader(details) + wrapUntrustedContent(content) }],
 			details,
 		},
 		cacheKey,
@@ -416,7 +416,7 @@ export async function webfetchSPA(
 
 		return cacheFetchResult(
 			{
-				content: [{ type: 'text' as const, text: buildFetchHeader(details) + finalText }],
+				content: [{ type: 'text' as const, text: buildFetchHeader(details) + wrapUntrustedContent(finalText) }],
 				details,
 			},
 			cacheKey,

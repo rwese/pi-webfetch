@@ -38,4 +38,9 @@ export {
 export { staticFetch, handleBinary, __resetStaticOnlyWarningForTest } from './static-fetch.js';
 
 // Header building
-export { buildFetchHeader } from './header-builder.js';
+export {
+	buildFetchHeader,
+	wrapUntrustedContent,
+	UNTRUSTED_CONTENT_BEGIN,
+	UNTRUSTED_CONTENT_END,
+} from './header-builder.js';

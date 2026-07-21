@@ -7,6 +7,7 @@
 import type { WebfetchDetails, FetchResult } from '../types.js';
 import type { AgentToolUpdateCallback } from '@mariozechner/pi-coding-agent';
 import { spawnPiAgent, type SpawnPiAgentResult } from '../pi-agent.js';
+import { wrapUntrustedContent } from './header-builder.js';
 import type { PiRpcToolEvent } from '../pi-rpc-client.js';
 import type { FetchPhase } from '../fetch-phases.js';
 import { fetchUrl, type ProviderFetchOptions } from './fetch-service.js';
@@ -17,6 +18,7 @@ import {
 	type ResumeSource,
 } from '../utils/resume.js';
 import { writeInputFiles, type ResearchInputFiles } from '../utils/formatting.js';
+import type { ResearchModelConfig } from '../model-config.js';
 
 /** Result type for research queries */
 export interface ResearchResult {
@@ -127,6 +129,8 @@ function formatToolEvent(event: PiRpcToolEvent, inputFiles: ResearchInputFiles):
  *                       research subagent. Falls back to the spawn
  *                       default (`DEFAULT_PI_AGENT_TIMEOUT_MS` in
  *                       `extensions/pi-agent.ts`, currently 300000).
+ * @param researchModel - Optional provider/model override selected by
+ *                       the pi extension. Omit to use Pi's normal default.
  * @returns FetchResult with analysis or error content
  *
  * @example
@@ -150,6 +154,7 @@ export async function webfetchResearch(
 	notify?: ResearchNotify,
 	resumeSource: ResumeSource = 'extension',
 	timeout?: number,
+	researchModel?: ResearchModelConfig,
 ): Promise<FetchResult> {
 	// Use provided fetch or default
 	const fetchFunc = fetchFn || fetch;
@@ -276,6 +281,7 @@ export async function webfetchResearch(
 				inputFile: inputFiles.inputFile,
 				inputRawFile: inputFiles.inputRawFile,
 				...(timeout !== undefined ? { timeout } : {}),
+				...(researchModel ? { model: researchModel } : {}),
 			});
 
 			const researchDetails: WebfetchDetails = {
@@ -289,9 +295,13 @@ export async function webfetchResearch(
 				inputRawFile: inputFiles.inputRawFile,
 			};
 
-			// Return with final analysis (chunks already streamed)
+			// Return with final analysis (chunks already streamed).
+			// The analysis is wrapped in the untrusted-content fence
+			// because the subagent may quote page snippets — the
+			// downstream agent should treat any quoted text as data,
+			// not instructions. Defense in depth.
 			return {
-				content: [{ type: 'text', text: header + agentResult.analysis }],
+				content: [{ type: 'text', text: header + wrapUntrustedContent(agentResult.analysis) }],
 				details: researchDetails,
 			};
 		}
@@ -313,6 +323,7 @@ export async function webfetchResearch(
 			inputFile: inputFiles.inputFile,
 			inputRawFile: inputFiles.inputRawFile,
 			...(timeout !== undefined ? { timeout } : {}),
+			...(researchModel ? { model: researchModel } : {}),
 		});
 
 		const researchDetails: WebfetchDetails = {
@@ -326,7 +337,7 @@ export async function webfetchResearch(
 		};
 
 		return {
-			content: [{ type: 'text', text: header + agentResult.analysis }],
+			content: [{ type: 'text', text: header + wrapUntrustedContent(agentResult.analysis) }],
 			details: researchDetails,
 		};
 	} catch (error) {
@@ -357,7 +368,16 @@ export async function webfetchResearch(
 		notify?.(hint.message, 'error');
 
 		return {
-			content: [{ type: 'text', text: fallbackHeader + content }],
+			// The fallback body is the fetched content (with its own
+			// outer `## Fetch Result` metadata header). Wrap the
+			// whole thing in the untrusted-content fence so the
+			// agent treats the page-derived data — and any quoted
+			// snippets in the metadata — as untrusted. The fence is
+			// added at the outermost level (nested with the inner
+			// fence added by the fetch-service path); both fences
+			// carry the same warning text so the agent's intent is
+			// unambiguous.
+			content: [{ type: 'text', text: fallbackHeader + wrapUntrustedContent(content) }],
 			details: {
 				...fetchResult.details,
 				processedAs: 'error',
