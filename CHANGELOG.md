@@ -5,6 +5,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-07-21
+
 ### Added (2026-07-21 research model selector)
 
 - **Persistent research-subagent model selection.** The new
