@@ -39,10 +39,12 @@ The same tools are exposed through both the pi extension and the MCP server.
 ## Pi Slash Commands
 
 Use `/webfetch:model` to choose the model used by research-mode
-subagents started by the pi extension tool or `/webfetch` command. The
-menu reads `ctx.modelRegistry.getAvailable()`, so it includes models and
-providers configured in the current Pi agent. Choose **Use Pi default
-model** to clear the override.
+subagents started by the pi extension tool or `/webfetch` command. Type
+in the selector to filter by provider, model ID, or display name, then
+use ↑/↓ and Enter to select. The menu reads
+`ctx.modelRegistry.getAvailable()`, so it includes models and providers
+configured in the current Pi agent. Choose **Use Pi default model** to
+clear the override.
 
 The selection persists in `<pi-agent-dir>/pi-webfetch.json` (normally
 `~/.pi/agent/pi-webfetch.json`):

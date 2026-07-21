@@ -429,6 +429,70 @@ describe('webfetchResearch - resume hint', () => {
 		expect(opts?.timeout).toBe(300_000);
 	});
 
+	it('forwards the selected research model to spawnPiAgent (non-streaming)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+		const model = {
+			provider: 'openrouter',
+			id: 'anthropic/claude-sonnet-4',
+		};
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+			undefined,
+			model,
+		);
+
+		expect(spawnPiAgentMock.mock.calls[0][2]?.model).toEqual(model);
+	});
+
+	it('forwards the selected research model to spawnPiAgent (streaming)', async () => {
+		fetchUrlMock.mockResolvedValue(happyFetchResult);
+		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => ({
+			analysis: 'analysis text',
+			exitCode: 0,
+			sessionId: opts?.sessionId,
+			sessionName: opts?.sessionName,
+		}));
+		const model = { provider: 'openai', id: 'gpt-5' };
+
+		await webfetchResearch(
+			'https://example.com',
+			'q',
+			undefined,
+			undefined,
+			{
+				callback: vi.fn(),
+				url: 'https://example.com',
+				initialPhase: 'analyzing',
+				streamingPhase: 'streaming',
+			},
+			undefined,
+			undefined,
+			() => 1,
+			vi.fn(),
+			'extension',
+			undefined,
+			model,
+		);
+
+		expect(spawnPiAgentMock.mock.calls[0][2]?.model).toEqual(model);
+	});
+
 	it('omits the timeout option when not provided, so spawnPiAgent uses its default', async () => {
 		// Regression guard: the user-facing 60s timeout bug was triggered
 		// by the spawn default being too low. Today the spawn default is

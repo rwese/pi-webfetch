@@ -24,6 +24,7 @@ import {
 	registerWebfetchInfoCommand,
 	registerWebfetchCacheCommand,
 	registerWebfetchProvidersCommand,
+	registerWebfetchModelCommand,
 } from './commands/index.js';
 
 // Fetch functions
@@ -88,6 +89,7 @@ export default function (pi: ExtensionAPI): void {
 	registerWebfetchInfoCommand(pi);
 	registerWebfetchCacheCommand(pi);
 	registerWebfetchProvidersCommand(pi);
+	registerWebfetchModelCommand(pi);
 
 	// Register session shutdown handler to clean up browser resources
 	pi.on('session_shutdown', async () => {

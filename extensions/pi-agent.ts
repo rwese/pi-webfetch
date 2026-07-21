@@ -16,6 +16,7 @@ import { cwd } from 'node:process';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { PiRpcClient, type PiRpcToolEvent } from './pi-rpc-client.js';
+import type { ResearchModelConfig } from './model-config.js';
 
 export interface SpawnPiAgentOptions {
 	/**
@@ -27,6 +28,8 @@ export interface SpawnPiAgentOptions {
 	 * a `timeout` knob for this.
 	 */
 	timeout?: number;
+	/** Model selected for the research subagent. Omit to use Pi's normal default. */
+	model?: ResearchModelConfig;
 	/** Working directory for pi process */
 	cwd?: string;
 	/** Environment variables */
@@ -283,9 +286,15 @@ function buildArgv(
 		noExtensions: boolean;
 		sessionId?: string;
 		sessionName?: string;
+		model?: ResearchModelConfig;
 	},
 ): string[] {
 	const args: string[] = ['--mode', 'rpc'];
+
+	// Pin the configured research model without changing the parent session model.
+	if (options.model) {
+		args.push('--provider', options.model.provider, '--model', options.model.id);
+	}
 
 	// Add skills (only existing paths on disk; `resolveSkillPaths`
 	// already filters out non-existent skill directories).
@@ -360,6 +369,7 @@ export async function spawnPiAgent(
 ): Promise<SpawnPiAgentResult> {
 	const {
 		timeout = DEFAULT_PI_AGENT_TIMEOUT_MS,
+		model,
 		cwd: cwdOption = cwd(),
 		env: envOption = {},
 		onChunk,
@@ -381,6 +391,7 @@ export async function spawnPiAgent(
 		noExtensions,
 		sessionId,
 		sessionName,
+		model,
 	});
 
 	// Build the lean research prompt. The content is NOT inlined;

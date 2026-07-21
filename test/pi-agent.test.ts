@@ -122,6 +122,41 @@ describe('spawnPiAgent', () => {
 		expect(args[toolsIdx + 1]).toBe('read,grep,find,ls,bash');
 	});
 
+	it('passes an explicitly selected provider and model to the research subprocess', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
+		await spawnPiAgent('Content', 'Query', {
+			model: {
+				provider: 'openrouter',
+				id: 'anthropic/claude-sonnet-4',
+			},
+		});
+		const args = capturedCtorArgs[0].args;
+		const providerIdx = args.indexOf('--provider');
+		const modelIdx = args.indexOf('--model');
+		expect(providerIdx).toBeGreaterThanOrEqual(0);
+		expect(args[providerIdx + 1]).toBe('openrouter');
+		expect(modelIdx).toBeGreaterThanOrEqual(0);
+		expect(args[modelIdx + 1]).toBe('anthropic/claude-sonnet-4');
+	});
+
+	it('omits provider and model flags when no research model is selected', async () => {
+		mockRun.mockImplementationOnce(async () => ({
+			text: 'Result',
+			sessionId: '',
+			sessionName: undefined,
+			exitCode: 0,
+		}));
+		await spawnPiAgent('Content', 'Query');
+		const args = capturedCtorArgs[0].args;
+		expect(args).not.toContain('--provider');
+		expect(args).not.toContain('--model');
+	});
+
 	it('allows disabling skills', async () => {
 		mockRun.mockImplementationOnce(async () => ({
 			text: 'Result',

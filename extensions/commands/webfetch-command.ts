@@ -7,6 +7,7 @@
 import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
 import { webfetchResearch } from '../fetch.js';
 import { getCommandPhaseLabel } from '../helpers.js';
+import { loadWebfetchConfig } from '../model-config.js';
 
 /**
  * Register the webfetch command handler
@@ -132,6 +133,8 @@ export function registerWebfetchCommand(pi: ExtensionAPI): void {
 						ctx.ui.notify(message, 'error');
 					},
 					'extension',
+					undefined,
+					loadWebfetchConfig().researchModel,
 				);
 				const text = result.content[0]?.text || 'No content';
 

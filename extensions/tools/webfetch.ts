@@ -11,6 +11,7 @@ import { Type } from '@sinclair/typebox';
 import { parseUrlForDisplay, FETCH_PHASE_LABELS } from '../helpers.js';
 import { formatAge } from '../cache.js';
 import { webfetchResearch } from '../fetch.js';
+import { loadWebfetchConfig } from '../model-config.js';
 
 /**
  * Webfetch tool parameters schema
@@ -199,6 +200,7 @@ export function registerWebfetchTool(pi: ExtensionAPI): void {
 				},
 				'extension',
 				params.timeout,
+				loadWebfetchConfig().researchModel,
 			);
 
 			return result;

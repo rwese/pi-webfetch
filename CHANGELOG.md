@@ -5,6 +5,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added (2026-07-21 research model selector)
+
+- **Persistent research-subagent model selection.** The new
+  `/webfetch:model` slash command opens a searchable selector populated
+  from Pi's available model registry. It filters by provider, model ID,
+  or display name. The selected provider/model is
+  stored in `<pi-agent-dir>/pi-webfetch.json` and passed to extension
+  research subprocesses via `--provider` and `--model`, without changing
+  the parent session model. Selecting **Use Pi default model** clears the
+  override.
+
 ### Added (2026-06-07 browser-session-cleanup audit)
 
 - **Browser session cleanup in tests.** Per-test
