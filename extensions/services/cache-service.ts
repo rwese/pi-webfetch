@@ -35,7 +35,6 @@ export function shouldSkipCache(url: string): boolean {
  * `validateCacheEntry` to confirm that a cached entry actually
  * corresponds to the requested URL.
  */
-// fallow-ignore-next-line unused-exports
 export function extractHtmlTitle(html: string): string | undefined {
 	try {
 		const $ = load(html);
@@ -126,7 +125,6 @@ function titleMatchesUrl(title: string | undefined, requestedUrl: string): boole
  * the cache write is just skipped. This is the second half of
  * the review's M1 fix for finding 1 (cache poisoning).
  */
-// fallow-ignore-next-line unused-exports
 export function validateCacheEntry(
 	entry: Pick<CacheEntry, 'finalUrl' | 'pageTitle' | 'rawContent' | 'url'>,
 	requestedUrl: string,

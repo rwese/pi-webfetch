@@ -4,7 +4,7 @@
  * Handles the /webfetch flash command for quick URL fetching.
  */
 
-import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { webfetchResearch } from '../fetch.js';
 import { getCommandPhaseLabel } from '../helpers.js';
 import { loadWebfetchConfig } from '../model-config.js';

@@ -15,7 +15,6 @@ const clearCacheOlderThanMock = vi.hoisted(() => vi.fn());
 const clearCacheMock = vi.hoisted(() => vi.fn());
 const getCacheStatsMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../extensions/services/webfetch-research.js', () => ({}));
 vi.mock('../extensions/fetch.js', () => ({
 	webfetchResearch: vi.fn(),
 	webfetchSPA: vi.fn(),
@@ -38,14 +37,17 @@ vi.mock('../extensions/cache.js', () => ({
 		if (!m) return null;
 		const n = Number(m[1]);
 		const u = (m[2] ?? 'ms').toLowerCase();
-		return (
-			u === 'ms' ? n :
-			u === 's'  ? n * 1000 :
-			u === 'm'  ? n * 60_000 :
-			u === 'h'  ? n * 3_600_000 :
-			u === 'd'  ? n * 86_400_000 :
-			null
-		);
+		return u === 'ms'
+			? n
+			: u === 's'
+				? n * 1000
+				: u === 'm'
+					? n * 60_000
+					: u === 'h'
+						? n * 3_600_000
+						: u === 'd'
+							? n * 86_400_000
+							: null;
 	},
 	DEFAULT_CACHE_TTL_MS: 3_600_000,
 }));
@@ -145,11 +147,7 @@ describe('webfetch-clear-cache --older-than <duration>', () => {
 
 	it('rejects malformed durations', async () => {
 		const io = createIo();
-		const exitCode = await runCli(
-			['clear-cache', '--older-than', 'banana'],
-			undefined,
-			io,
-		);
+		const exitCode = await runCli(['clear-cache', '--older-than', 'banana'], undefined, io);
 		expect(exitCode).toBe(1);
 		expect(io.stderrText()).toContain('Invalid --older-than');
 	});

@@ -20,13 +20,15 @@ Webfetch extension for [pi coding agent](https://github.com/badlogic/pi-mono) an
   and closes it in `finally`. Two concurrent `webfetch`
   processes on the same host never share state.
 - **Research mode with live progress** → When a `--query` is
-  provided, the parent spawns a persistent `pi --mode rpc`
-  subagent that streams text deltas and tool events back to
-  the parent so the user sees live progress (e.g. `📖 reading
-<path>`, `🔧 bash: <command>`). The subagent is a real,
-  named, persistent session — on failure the user can
+  provided, the parent runs a direct in-process `AgentSession` from
+  the `@earendil-works/pi-coding-agent` SDK that streams text deltas
+  and tool events back to the parent so the user sees live progress
+  (e.g. `📖 reading <path>`, `🔧 bash: <command>`). pi-webfetch
+  controls the subagent's tools, model, and API keys directly — no
+  pre-configured `pi` runtime instance is required. The subagent is
+  a real, named, persistent session — on failure the user can
   `pi --session <id>` into the failed transcript. See
-  `docs/plans/PI_RPC_NOTES.md` for the protocol details.
+  `docs/plans/PLAN_SDK_IN_PROCESS.md` for the design.
 - **Persistent research-model selection** → `/webfetch:model`
   opens a scrollable menu of the models currently available in
   Pi. The selected provider/model is used for extension research
@@ -213,6 +215,32 @@ The MCP server exposes:
 - `webfetch-clear-cache`
 - `webfetch-cache-stats`
 
+## OpenCode Custom Tool
+
+This repository includes an OpenCode custom-tool adapter at
+`.opencode/tools/webfetch.ts`. From a checkout, install dependencies and
+start OpenCode in the repository:
+
+```bash
+npm install
+opencode
+```
+
+OpenCode discovers the `webfetch` tool automatically. The tool accepts
+`url`, `query`, `includeComments`, `timeout`, and `cacheTtlMs`, matching
+the pi and MCP `webfetch` surfaces.
+
+To use the published package from another project, install it in that
+project and add this file:
+
+```ts
+// .opencode/tools/webfetch.ts
+export { default } from '@rwese/pi-webfetch/dist/extensions/opencode-tool.js'
+```
+
+Quit and restart OpenCode after adding or changing a custom tool; tool
+definitions are loaded at startup.
+
 ## How It Works
 
 `webfetch` automatically:
@@ -266,11 +294,11 @@ See `docs/cache.md` for the full layout, defaults, and
 
 ## Resuming a Failed Research Subagent
 
-When research mode spawns the analysis subagent, it launches as a
-real, named, persistent pi session (`pi -p --name "<n>" --session-id
-"<id>" "<prompt>"`). The session id is
-`sha256(timestamp + url + query)` truncated to 16 hex chars, so each
-invocation gets its own resumable session. If the subagent fails:
+When research mode runs the analysis subagent, it creates a direct
+in-process pi session (`AgentSession`) seeded with a deterministic
+session id. The session id is `sha256(timestamp + url + query)`
+truncated to 16 hex chars, so each invocation gets its own resumable
+session. If the subagent fails:
 
 - **In a pi session (the extension):** a TUI notification shows
   `pi --session <id>`. From the same working directory, run

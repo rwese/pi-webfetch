@@ -4,7 +4,7 @@
  * Handles the /webfetch:info command for showing provider information.
  */
 
-import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import { getProviderStatus } from '../fetch.js';
 
 /**

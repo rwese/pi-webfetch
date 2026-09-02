@@ -39,7 +39,7 @@ export interface WebfetchMcpDependencies {
 	webfetchResearch: typeof webfetchResearch;
 }
 
-// fallow-ignore-next-line unused-exports
+// fallow-ignore-next-line unused-export
 export const defaultWebfetchMcpDependencies: WebfetchMcpDependencies = {
 	webfetchResearch,
 };
@@ -68,7 +68,7 @@ function toToolResult(result: FetchResult): CallToolResult {
 	};
 }
 
-// fallow-ignore-next-line unused-exports
+// fallow-ignore-next-line unused-export
 export function registerWebfetchMcpTools(
 	server: McpServer,
 	deps: WebfetchMcpDependencies = defaultWebfetchMcpDependencies,

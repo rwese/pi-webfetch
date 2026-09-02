@@ -1,7 +1,14 @@
 # PI RPC Notes
 
+> **SUPERSEDED (2026-09-01).** The research subagent no longer uses the
+> `pi --mode rpc` JSON-RPC transport. It is now a direct in-process
+> `AgentSession` from the `@earendil-works/pi-coding-agent` SDK — see
+> `docs/plans/PLAN_SDK_IN_PROCESS.md`. `extensions/pi-rpc-client.ts` was
+> removed; `extensions/pi-session.ts` replaces it. The notes below are kept
+> for historical context only.
+
 Implementation notes for the `pi --mode rpc` transport used by
-`extensions/pi-rpc-client.ts` and consumed by `extensions/pi-agent.ts`.
+`extensions/pi-rpc-client.ts` (removed) and consumed by `extensions/pi-agent.ts`.
 
 The wrapper is a thin JSON-RPC client that drives `pi` over stdio.
 The previous print-mode `-p <prompt>` spawn is gone; the subagent

@@ -1,10 +1,13 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { getAgentDir } from '@mariozechner/pi-coding-agent';
+import { getAgentDir } from '@earendil-works/pi-coding-agent';
 
 export interface ResearchModelConfig {
 	provider: string;
 	id: string;
+	/** Optional explicit API key for the provider. When unset, provider env
+	 *  vars are used (e.g. `ANTHROPIC_API_KEY`). */
+	apiKey?: string;
 }
 
 export interface WebfetchConfig {
@@ -18,12 +21,19 @@ export function getWebfetchConfigPath(agentDir: string = getAgentDir()): string 
 function isResearchModelConfig(value: unknown): value is ResearchModelConfig {
 	if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
 	const candidate = value as Record<string, unknown>;
-	return (
-		typeof candidate['provider'] === 'string' &&
-		candidate['provider'].trim().length > 0 &&
-		typeof candidate['id'] === 'string' &&
-		candidate['id'].trim().length > 0
-	);
+	if (
+		typeof candidate['provider'] !== 'string' ||
+		candidate['provider'].trim().length === 0 ||
+		typeof candidate['id'] !== 'string' ||
+		candidate['id'].trim().length === 0
+	) {
+		return false;
+	}
+	const apiKey = candidate['apiKey'];
+	if (apiKey !== undefined && (typeof apiKey !== 'string' || apiKey.trim().length === 0)) {
+		return false;
+	}
+	return true;
 }
 
 /** Load the persisted extension config. Missing or invalid files safely use defaults. */
@@ -35,12 +45,14 @@ export function loadWebfetchConfig(configPath: string = getWebfetchConfigPath())
 		const researchModel = (parsed as Record<string, unknown>)['researchModel'];
 		if (researchModel === undefined) return {};
 		if (!isResearchModelConfig(researchModel)) return {};
-		return {
-			researchModel: {
-				provider: researchModel.provider.trim(),
-				id: researchModel.id.trim(),
-			},
+		const result: ResearchModelConfig = {
+			provider: researchModel.provider.trim(),
+			id: researchModel.id.trim(),
 		};
+		if (typeof researchModel.apiKey === 'string' && researchModel.apiKey.trim().length > 0) {
+			result.apiKey = researchModel.apiKey.trim();
+		}
+		return { researchModel: result };
 	} catch {
 		return {};
 	}

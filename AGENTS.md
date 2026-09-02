@@ -71,23 +71,32 @@ test/fixtures/       offline HTML fixtures and fixture helpers
 - Provider abstraction: `WebfetchProvider` with `name`, `priority`, `capabilities`, `isAvailable`, `detectUrl`, and `fetch`.
 - Provider priority: `default` 10, `gh-cli` 8, `clawfetch` 5. GitHub URLs prefer `gh-cli` when authenticated.
 - Markdown post-processing removes auto anchors, extracts embedded images to temp files, and preserves code blocks/tables.
-- Research mode fetches content, spawns a pi subprocess for analysis, and falls back to fetched content if analysis fails. The spawn default budget is `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`, 300000ms = 5 min); the CLI / MCP / pi tool each expose a `timeout` knob to override per call.
+- Research mode fetches content, runs an in-process pi subagent for analysis, and falls back to fetched content if analysis fails. The run default budget is `DEFAULT_PI_AGENT_TIMEOUT_MS` (`extensions/pi-agent.ts`, 300000ms = 5 min); the CLI / MCP / pi tool each expose a `timeout` knob to override per call.
 - Research mode writes the fetched content to a session-keyed work dir (`<tmpdir>/pi-webfetch-research/<sessionId>/input.md`, plus `input_raw.<ext>` when the provider surfaces raw content) and threads the absolute paths into the subagent's spawn options. The prompt is lean: it surfaces the URL, the parent's cwd, the session name, and the file paths; the subagent `read`s / `grep`s the content on demand. The work dir / file paths are returned on `WebfetchDetails` (`workDir`, `inputFile`, `inputRawFile`) on both the success and the agent-error paths.
-- **JSON-RPC transport for the research subagent.** The subagent
-  is driven as a real, named, persistent `pi --mode rpc` session
-  via the thin wrapper in `extensions/pi-rpc-client.ts` (see
-  `docs/plans/PI_RPC_NOTES.md` for the protocol quirks). The
-  wrapper coalesces `text_delta` events to a 16ms flush cadence
-  (one frame at 60fps), auto-dismisses `extension_ui_request`
-  events (default `true`), owns the wall-clock `agent_end` timeout
-  with a SIGTERM → SIGKILL cascade via `stop()`, and surfaces
+- **In-process SDK research subagent.** The subagent is a direct
+  `AgentSession` from the `@earendil-works/pi-coding-agent` SDK
+  (`extensions/pi-session.ts`, see `docs/plans/PLAN_SDK_IN_PROCESS.md`)
+  — no spawned `pi` subprocess, no JSON-RPC transport. pi-webfetch
+  controls the subagent's tools (allowlist `read, grep, find, ls,
+  bash`), model, and API keys via the SDK's `createAgentSession` /
+  `ModelRuntime`, so a pre-configured `pi` runtime instance is not
+  required. The SDK packages are pinned to `@earendil-works/*@0.84.4`
+  (the official `pi` packages); the pi host aliases `@mariozechner/*`
+  to those same packages, so the extension and the standalone CLI/MCP
+  paths share one SDK version. `createAgentSession` is a runtime
+  dependency. The wrapper builds an isolated `ModelRuntime` (temp auth
+  file, built-in models only, no network refresh) and injects any
+  explicit / env-driven API key as a runtime key, so the user's
+  `~/.pi/agent/auth.json` is never read. It coalesces `text_delta`
+  events to a 16ms flush cadence (one frame at 60fps), surfaces
   `tool_execution_start` events to the parent via an `onToolCall`
-  callback. Tool names map to a parent-friendly phase union
+  callback, and enforces the wall-clock timeout with `session.abort()`.
+  Tool names map to a parent-friendly phase union
   (`read`/`grep`/`find`/`ls` → `reading`, `bash` → `executing`,
-  everything else → `thinking`). `SpawnPiAgentResult.sessionId`
-  / `sessionName` are sourced from the live `get_state` response,
-  not the pre-computed id, so the resume command always points at
-  the actual spawned subagent.
+  everything else → `thinking`). `SpawnPiAgentResult.sessionId` /
+  `sessionName` are sourced from the live in-process `AgentSession`, not
+  the pre-computed id, so the resume command always points at the actual
+  subagent transcript.
 - Binary content is downloaded to temp files and not analyzed.
 - Agent-error resume flow: research mode spawns the subagent as a real, named, persistent pi session (`--session-id <id>` / `--name <name>`) so the user can `pi --session <id>` into the failed transcript. On the agent-error path, the in-content fallback stays byte-identical to the pre-change baseline; the resume hint lives in `WebfetchDetails.subagentSessionId` / `subagentSessionName` / `resumeCommand` and a side-channel `notify` (TUI notify on the extension, stderr on the CLI, `_meta.details.notify` on the MCP). See `docs/plans/PLAN_AGENT_ERROR_RESUME.md` for the full design.
 - **Provider error classification** (BUG-2026-06-06-JGCMZSET-YZOYE / BUG-2026-06-06-JGCMZSNR-YZOYE). When the default (browser) provider fails, the fetch service catches the `ProviderError`, classifies the cause via its `reason` field (`'unknown' | 'timeout' | 'navigation_failed' | 'low_text_ratio'`), and surfaces it on `WebfetchDetails.providerError`. The optional `cacheNotify` channel is fired once with a `warn`-level message. A transient reason (`timeout`, `navigation_failed`) skips the cache write so the next call within the same TTL re-attempts the browser. Pinned by `test/provider-fallback-notify.test.ts`, `test/provider-net-error.test.ts`, `test/fetch-service-net-error.test.ts`, and `test/browser-large-page.test.ts`.

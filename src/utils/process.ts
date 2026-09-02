@@ -43,7 +43,7 @@ export interface ExecAsyncResult {
 export function execAsync(
 	command: string,
 	args: string[],
-	options: ExecAsyncOptions = {}
+	options: ExecAsyncOptions = {},
 ): Promise<string> {
 	return new Promise((resolve, reject) => {
 		const proc = spawn(command, args, {
@@ -68,7 +68,15 @@ export function execAsync(
 		if (options.timeout) {
 			timer = setTimeout(() => {
 				proc.kill('SIGTERM');
-				reject(new ExecAsyncError(`Command timed out after ${options.timeout}ms`, command, args, null, stderr));
+				reject(
+					new ExecAsyncError(
+						`Command timed out after ${options.timeout}ms`,
+						command,
+						args,
+						null,
+						stderr,
+					),
+				);
 			}, options.timeout);
 
 			proc.on('close', () => {
@@ -80,7 +88,15 @@ export function execAsync(
 			if (code === 0) {
 				resolve(stdout);
 			} else {
-				reject(new ExecAsyncError(stderr || `Command exited with code ${code}`, command, args, code, stderr));
+				reject(
+					new ExecAsyncError(
+						stderr || `Command exited with code ${code}`,
+						command,
+						args,
+						code,
+						stderr,
+					),
+				);
 			}
 		});
 
@@ -94,14 +110,14 @@ export function execAsync(
 /**
  * Error class for execAsync failures
  */
-// fallow-ignore-next-line unused-exports
+// fallow-ignore-next-line unused-export
 export class ExecAsyncError extends Error {
 	constructor(
 		message: string,
 		public readonly command: string,
 		public readonly args: string[],
 		public readonly exitCode: number | null,
-		public readonly stderr: string
+		public readonly stderr: string,
 	) {
 		super(`[${command}] ${message}`);
 		this.name = 'ExecAsyncError';
@@ -116,11 +132,11 @@ export class ExecAsyncError extends Error {
  * @param options - Optional configuration
  * @returns Promise resolving to full result
  */
-// fallow-ignore-next-line unused-exports
+// fallow-ignore-next-line unused-export
 export async function execAsyncFull(
 	command: string,
 	args: string[],
-	options: ExecAsyncOptions = {}
+	options: ExecAsyncOptions = {},
 ): Promise<ExecAsyncResult> {
 	return new Promise((resolve, reject) => {
 		const proc = spawn(command, args, {
@@ -145,7 +161,15 @@ export async function execAsyncFull(
 		if (options.timeout) {
 			timer = setTimeout(() => {
 				proc.kill('SIGTERM');
-				reject(new ExecAsyncError(`Command timed out after ${options.timeout}ms`, command, args, null, stderr));
+				reject(
+					new ExecAsyncError(
+						`Command timed out after ${options.timeout}ms`,
+						command,
+						args,
+						null,
+						stderr,
+					),
+				);
 			}, options.timeout);
 
 			proc.on('close', () => {
@@ -167,7 +191,7 @@ export async function execAsyncFull(
 /**
  * Simple async mutex for preventing concurrent process access
  */
-// fallow-ignore-next-line unused-exports
+// fallow-ignore-next-line unused-export
 export class ProcessMutex {
 	private locked = false;
 	private waitQueue: Array<() => void> = [];
@@ -221,7 +245,7 @@ export class ProcessMutex {
 /**
  * Kill a child process and all its children
  */
-// fallow-ignore-next-line unused-exports
+// fallow-ignore-next-line unused-export
 export function killProcessTree(proc: ChildProcess): void {
 	if (proc.pid && proc.pid > 0) {
 		try {

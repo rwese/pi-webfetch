@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { EventEmitter } from 'node:events';
-import type { AgentToolResult } from '@mariozechner/pi-coding-agent';
+import type { AgentToolResult } from '@earendil-works/pi-coding-agent';
 import { webfetchResearch } from '../extensions/services/research-service.js';
 
 // Mock the underlying pi-agent so we can drive `webfetchResearch` through
@@ -72,7 +72,9 @@ describe('webfetchResearch - resume hint', () => {
 		expect(result.details.phase).toBe('error');
 		expect(result.details.subagentSessionId).toMatch(/^[0-9a-f]{16}$/);
 		expect(result.details.subagentSessionName).toBe('webfetch-research: example.com');
-		expect(result.details.resumeCommand).toBe(`pi --session ${result.details.subagentSessionId}`);
+		expect(result.details.resumeCommand).toBe(
+			`pi --session ${result.details.subagentSessionId}`,
+		);
 
 		expect(notify).toHaveBeenCalledTimes(1);
 		const [message, level] = notify.mock.calls[0];
@@ -134,7 +136,9 @@ describe('webfetchResearch - resume hint', () => {
 		expect(notify).toHaveBeenCalledTimes(1);
 		const message = notify.mock.calls[0][0] as string;
 		// Stable multi-line shape; tests can pin to this.
-		expect(message).toMatch(/^Research subagent failed\.\nResume: pi --session [0-9a-f]{16}\nSession name: webfetch-research: example\.com\nReason: boom$/);
+		expect(message).toMatch(
+			/^Research subagent failed\.\nResume: pi --session [0-9a-f]{16}\nSession name: webfetch-research: example\.com\nReason: boom$/,
+		);
 	});
 
 	it('derives a deterministic session id - same now / URL / query produce the same id', async () => {
@@ -291,9 +295,7 @@ describe('webfetchResearch - resume hint', () => {
 
 		// Success path: the id in the result matches the option passed
 		// to spawnPiAgent. (Sanity.)
-		expect(result.details.subagentSessionId).toBe(
-			spawnPiAgentMock.mock.calls[0][2]?.sessionId,
-		);
+		expect(result.details.subagentSessionId).toBe(spawnPiAgentMock.mock.calls[0][2]?.sessionId);
 	});
 
 	it('reuses the same subagent session id on the spawn and the resume hint (agent-error path, non-streaming)', async () => {
@@ -320,9 +322,7 @@ describe('webfetchResearch - resume hint', () => {
 		// The id surfaced on the details MUST be the same id the spawn
 		// was invoked with. Otherwise the resume command points at a
 		// non-existent session.
-		expect(result.details.subagentSessionId).toBe(
-			spawnPiAgentMock.mock.calls[0][2]?.sessionId,
-		);
+		expect(result.details.subagentSessionId).toBe(spawnPiAgentMock.mock.calls[0][2]?.sessionId);
 		// And the resume command is built from that same id.
 		expect(result.details.resumeCommand).toBe(
 			`pi --session ${result.details.subagentSessionId}`,
@@ -359,9 +359,7 @@ describe('webfetchResearch - resume hint', () => {
 			'extension',
 		);
 
-		expect(result.details.subagentSessionId).toBe(
-			spawnPiAgentMock.mock.calls[0][2]?.sessionId,
-		);
+		expect(result.details.subagentSessionId).toBe(spawnPiAgentMock.mock.calls[0][2]?.sessionId);
 		expect(result.details.resumeCommand).toBe(
 			`pi --session ${result.details.subagentSessionId}`,
 		);
@@ -811,13 +809,7 @@ describe('webfetchResearch - tool call streaming', () => {
 			};
 		});
 
-		await webfetchResearch(
-			'https://example.com',
-			'q',
-			undefined,
-			undefined,
-			streamingConfig,
-		);
+		await webfetchResearch('https://example.com', 'q', undefined, undefined, streamingConfig);
 
 		// Find the update with phase=reading (the most recent tool event).
 		const readUpdate = updates.find((u) => u.phase === 'reading');
@@ -851,13 +843,7 @@ describe('webfetchResearch - tool call streaming', () => {
 			};
 		});
 
-		await webfetchResearch(
-			'https://example.com',
-			'q',
-			undefined,
-			undefined,
-			streamingConfig,
-		);
+		await webfetchResearch('https://example.com', 'q', undefined, undefined, streamingConfig);
 
 		const execUpdate = updates.find((u) => u.phase === 'executing');
 		expect(execUpdate).toBeDefined();
@@ -881,7 +867,11 @@ describe('webfetchResearch - tool call streaming', () => {
 			streamingPhase: 'streaming' as const,
 		};
 		spawnPiAgentMock.mockImplementation(async (_content, _query, opts) => {
-			opts?.onToolCall?.({ phase: 'thinking', name: 'webfetch', args: { url: 'https://example.com' } });
+			opts?.onToolCall?.({
+				phase: 'thinking',
+				name: 'webfetch',
+				args: { url: 'https://example.com' },
+			});
 			return {
 				analysis: 'analysis text',
 				exitCode: 0,
@@ -890,13 +880,7 @@ describe('webfetchResearch - tool call streaming', () => {
 			};
 		});
 
-		await webfetchResearch(
-			'https://example.com',
-			'q',
-			undefined,
-			undefined,
-			streamingConfig,
-		);
+		await webfetchResearch('https://example.com', 'q', undefined, undefined, streamingConfig);
 
 		const thinkUpdate = updates.find((u) => u.phase === 'thinking');
 		expect(thinkUpdate).toBeDefined();
@@ -925,8 +909,12 @@ describe('webfetchResearch - tool call streaming', () => {
 			'extension',
 		);
 		expect(result.content[0]?.text).toContain('## Fetch Result (Agent Error)');
-		expect(result.content[0]?.text).toContain('**Command:** /webfetch https://example.com/page "q"');
-		expect(result.content[0]?.text).toContain('**Agent Error:** Pi agent timed out after 100ms');
+		expect(result.content[0]?.text).toContain(
+			'**Command:** /webfetch https://example.com/page "q"',
+		);
+		expect(result.content[0]?.text).toContain(
+			'**Agent Error:** Pi agent timed out after 100ms',
+		);
 		// The body ends with the fetched content, NOT a resume hint
 		// (the resume hint is in details / notify).
 		expect(result.content[0]?.text).toContain('Page body content');

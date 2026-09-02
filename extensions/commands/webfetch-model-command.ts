@@ -1,4 +1,4 @@
-import type { ExtensionAPI, ExtensionCommandContext, Theme } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI, ExtensionCommandContext, Theme } from '@earendil-works/pi-coding-agent';
 import {
 	Container,
 	Input,
@@ -8,7 +8,7 @@ import {
 	Spacer,
 	Text,
 	type TUI,
-} from '@mariozechner/pi-tui';
+} from '@earendil-works/pi-tui';
 import {
 	getWebfetchConfigPath,
 	loadWebfetchConfig,

@@ -5,10 +5,9 @@
  */
 
 import type { WebfetchDetails, FetchResult } from '../types.js';
-import type { AgentToolUpdateCallback } from '@mariozechner/pi-coding-agent';
-import { spawnPiAgent, type SpawnPiAgentResult } from '../pi-agent.js';
+import type { AgentToolUpdateCallback } from '@earendil-works/pi-coding-agent';
+import { spawnPiAgent, type SpawnPiAgentResult, type PiSessionToolEvent } from '../pi-agent.js';
 import { wrapUntrustedContent } from './header-builder.js';
-import type { PiRpcToolEvent } from '../pi-rpc-client.js';
 import type { FetchPhase } from '../fetch-phases.js';
 import { fetchUrl, type ProviderFetchOptions } from './fetch-service.js';
 import {
@@ -80,7 +79,7 @@ function yieldToEventLoop(): Promise<void> {
  *   `🔧 bash: ls /tmp/...`
  *   `💭 thinking: webfetch`
  */
-function formatToolEvent(event: PiRpcToolEvent, inputFiles: ResearchInputFiles): string {
+function formatToolEvent(event: PiSessionToolEvent, inputFiles: ResearchInputFiles): string {
 	const args = (event.args ?? {}) as Record<string, unknown>;
 	switch (event.phase) {
 		case 'reading': {
@@ -104,6 +103,63 @@ function formatToolEvent(event: PiRpcToolEvent, inputFiles: ResearchInputFiles):
 			return `💭 ${event.name}${argsText}`;
 		}
 	}
+}
+
+/**
+ * Shared `spawnPiAgent` options for the streaming and non-streaming research
+ * paths. The two call sites differ only in the streaming callbacks; the
+ * session identity, URL, input paths, timeout, and model override are common.
+ */
+function buildSpawnOptions(
+	args: {
+		sessionId: string;
+		sessionName: string;
+		url: string;
+		inputFiles: ResearchInputFiles;
+		timeout?: number;
+		researchModel?: ResearchModelConfig;
+	},
+	callbacks: {
+		onChunk?: (chunk: string) => void;
+		onToolCall?: (event: PiSessionToolEvent) => void;
+	},
+) {
+	return {
+		...callbacks,
+		sessionId: args.sessionId,
+		sessionName: args.sessionName,
+		url: args.url,
+		inputFile: args.inputFiles.inputFile,
+		inputRawFile: args.inputFiles.inputRawFile,
+		...(args.timeout !== undefined ? { timeout: args.timeout } : {}),
+		...(args.researchModel ? { model: args.researchModel } : {}),
+	};
+}
+
+/**
+ * Build the research-path `WebfetchDetails` from a fetch result + subagent
+ * result. Shared by the streaming and non-streaming paths.
+ */
+function buildResearchDetails(
+	args: {
+		fetchResultDetails: WebfetchDetails;
+		agentResult: SpawnPiAgentResult;
+		sessionId: string;
+		sessionName: string;
+		inputFiles: ResearchInputFiles;
+	},
+	phase?: FetchPhase,
+): WebfetchDetails {
+	return {
+		...args.fetchResultDetails,
+		processedAs: 'research',
+		...(phase ? { phase } : {}),
+		subagentSessionId: args.agentResult.sessionId ?? args.sessionId,
+		subagentSessionName: args.agentResult.sessionName ?? args.sessionName,
+		workDir: args.inputFiles.workDir,
+		inputFile: args.inputFiles.inputFile,
+		inputRawFile: args.inputFiles.inputRawFile,
+	};
 }
 
 /**
@@ -261,39 +317,39 @@ export async function webfetchResearch(
 			// the parent-friendly `phase` union (`'reading'` /
 			// `'executing'` / `'thinking'`) with a short
 			// human-readable content line.
-			const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
-				onChunk: (chunk) => {
-					config.callback?.({
-						content: [{ type: 'text', text: chunk }],
-						details: { phase: config.streamingPhase, url, streamed: true },
-					});
-				},
-				onToolCall: (event: PiRpcToolEvent) => {
-					const toolContent = formatToolEvent(event, inputFiles);
-					config.callback?.({
-						content: [{ type: 'text', text: toolContent }],
-						details: { phase: event.phase, url, streamed: true },
-					});
-				},
-				sessionId,
-				sessionName,
-				url,
-				inputFile: inputFiles.inputFile,
-				inputRawFile: inputFiles.inputRawFile,
-				...(timeout !== undefined ? { timeout } : {}),
-				...(researchModel ? { model: researchModel } : {}),
-			});
+			const agentResult: SpawnPiAgentResult = await spawnPiAgent(
+				content,
+				query,
+				buildSpawnOptions(
+					{ sessionId, sessionName, url, inputFiles, timeout, researchModel },
+					{
+						onChunk: (chunk) => {
+							config.callback?.({
+								content: [{ type: 'text', text: chunk }],
+								details: { phase: config.streamingPhase, url, streamed: true },
+							});
+						},
+						onToolCall: (event: PiSessionToolEvent) => {
+							const toolContent = formatToolEvent(event, inputFiles);
+							config.callback?.({
+								content: [{ type: 'text', text: toolContent }],
+								details: { phase: event.phase, url, streamed: true },
+							});
+						},
+					},
+				),
+			);
 
-			const researchDetails: WebfetchDetails = {
-				...fetchResult.details,
-				processedAs: 'research',
-				phase: 'complete',
-				subagentSessionId: agentResult.sessionId ?? sessionId,
-				subagentSessionName: agentResult.sessionName ?? sessionName,
-				workDir: inputFiles.workDir,
-				inputFile: inputFiles.inputFile,
-				inputRawFile: inputFiles.inputRawFile,
-			};
+			const researchDetails = buildResearchDetails(
+				{
+					fetchResultDetails: fetchResult.details,
+					agentResult,
+					sessionId,
+					sessionName,
+					inputFiles,
+				},
+				'complete',
+			);
 
 			// Return with final analysis (chunks already streamed).
 			// The analysis is wrapped in the untrusted-content fence
@@ -301,40 +357,40 @@ export async function webfetchResearch(
 			// downstream agent should treat any quoted text as data,
 			// not instructions. Defense in depth.
 			return {
-				content: [{ type: 'text', text: header + wrapUntrustedContent(agentResult.analysis) }],
+				content: [
+					{ type: 'text', text: header + wrapUntrustedContent(agentResult.analysis) },
+				],
 				details: researchDetails,
 			};
 		}
 
 		// No streaming available, use regular behavior
-		const agentResult: SpawnPiAgentResult = await spawnPiAgent(content, query, {
-			onToolCall: (event: PiRpcToolEvent) => {
-				// No streaming config: just log a debug-level hint
-				// so the tool call is observable. The CLI / MCP /
-				// tool surface can layer its own reporting on top.
-				// (We deliberately do not surface the tool call in
-				// the result body — the parent rendered the streaming
-				// path above; the non-streaming path is a fallback.)
-				void formatToolEvent(event, inputFiles);
-			},
+		const agentResult: SpawnPiAgentResult = await spawnPiAgent(
+			content,
+			query,
+			buildSpawnOptions(
+				{ sessionId, sessionName, url, inputFiles, timeout, researchModel },
+				{
+					onToolCall: (event: PiSessionToolEvent) => {
+						// No streaming config: just log a debug-level hint
+						// so the tool call is observable. The CLI / MCP /
+						// tool surface can layer its own reporting on top.
+						// (We deliberately do not surface the tool call in
+						// the result body — the parent rendered the streaming
+						// path above; the non-streaming path is a fallback.)
+						void formatToolEvent(event, inputFiles);
+					},
+				},
+			),
+		);
+
+		const researchDetails = buildResearchDetails({
+			fetchResultDetails: fetchResult.details,
+			agentResult,
 			sessionId,
 			sessionName,
-			url,
-			inputFile: inputFiles.inputFile,
-			inputRawFile: inputFiles.inputRawFile,
-			...(timeout !== undefined ? { timeout } : {}),
-			...(researchModel ? { model: researchModel } : {}),
+			inputFiles,
 		});
-
-		const researchDetails: WebfetchDetails = {
-			...fetchResult.details,
-			processedAs: 'research',
-			subagentSessionId: agentResult.sessionId ?? sessionId,
-			subagentSessionName: agentResult.sessionName ?? sessionName,
-			workDir: inputFiles.workDir,
-			inputFile: inputFiles.inputFile,
-			inputRawFile: inputFiles.inputRawFile,
-		};
 
 		return {
 			content: [{ type: 'text', text: header + wrapUntrustedContent(agentResult.analysis) }],

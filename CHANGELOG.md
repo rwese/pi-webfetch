@@ -3,7 +3,31 @@
 All notable changes to `@rwese/pi-webfetch` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.11.0] - 2026-09-02
+
+### Added
+
+- OpenCode custom-tool support through
+  `extensions/opencode-tool.ts`, with a project-local discovery shim at
+  `.opencode/tools/webfetch.ts`. The adapter exposes the existing
+  `webfetch` arguments and delegates to the shared fetch/research
+  service.
+
+### Changed
+
+- **In-process research subagent via the pi coding-agent SDK.** The
+  research subagent is now a direct in-process `AgentSession` created
+  through `@earendil-works/pi-coding-agent`'s `createAgentSession`
+  (`extensions/pi-session.ts`), replacing the spawned `pi --mode rpc`
+  subprocess and the hand-rolled JSON-RPC transport
+  (`extensions/pi-rpc-client.ts`, removed). pi-webfetch now controls
+  the subagent's tools (allowlist `read, grep, find, ls, bash`), model,
+  and API keys via the SDK's `ModelRuntime`, so a pre-configured `pi`
+  runtime instance is no longer required. The public `spawnPiAgent` API
+  is unchanged. The SDK packages are pinned to `@earendil-works/*@0.84.4`
+  (the official `pi` packages; the pi host aliases `@mariozechner/*` to
+  them). `@sinclair/typebox` moved to runtime `dependencies`. See
+  `docs/plans/PLAN_SDK_IN_PROCESS.md`.
 
 ## [0.10.0] - 2026-07-21
 

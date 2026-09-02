@@ -1,22 +1,29 @@
 /**
- * Pi Agent spawning for research queries
+ * Pi Agent for research queries
  *
- * Spawns a pi sub-agent to analyze fetched content based on a query.
- * The subprocess gets access to relevant skills and tools for smarter analysis.
+ * Runs a pi sub-agent in-process to analyze fetched content based on a query.
+ * The subagent is a direct `AgentSession` from the
+ * `@earendil-works/pi-coding-agent` SDK (see `extensions/pi-session.ts` and
+ * `docs/plans/PLAN_SDK_IN_PROCESS.md`), so pi-webfetch controls the subagent's
+ * tools, model, and API keys directly — no pre-configured `pi` runtime needed.
  *
- * The transport is JSON-RPC over stdio (see `extensions/pi-rpc-client.ts`).
- * The previous print-mode `-p <prompt>` spawn is gone; the subagent is
- * driven as a real, named, persistent pi session that streams text
- * deltas and tool events back to the parent so the parent can render
- * live progress (see `docs/plans/PLAN_PI_JSONRPC.md`).
+ * The previous spawned `pi --mode rpc` JSON-RPC subprocess transport is gone.
+ * Text deltas and tool events stream from the in-process session via the
+ * `onChunk` / `onToolCall` / `onThinking` callbacks.
  */
 
-import { existsSync } from 'node:fs';
 import { cwd } from 'node:process';
-import { resolve } from 'node:path';
-import { homedir } from 'node:os';
-import { PiRpcClient, type PiRpcToolEvent } from './pi-rpc-client.js';
+import {
+	runPiSession,
+	type PiSessionToolEvent,
+	type ToolPhase,
+	DEFAULT_RESEARCH_TOOLS as SESSION_DEFAULT_TOOLS,
+} from './pi-session.js';
 import type { ResearchModelConfig } from './model-config.js';
+import { PiAgentError } from './pi-errors.js';
+
+export { PiAgentError } from './pi-errors.js';
+export type { PiSessionToolEvent, ToolPhase };
 
 export interface SpawnPiAgentOptions {
 	/**
@@ -28,11 +35,14 @@ export interface SpawnPiAgentOptions {
 	 * a `timeout` knob for this.
 	 */
 	timeout?: number;
-	/** Model selected for the research subagent. Omit to use Pi's normal default. */
+	/** Model + optional API key for the research subagent. */
 	model?: ResearchModelConfig;
-	/** Working directory for pi process */
+	/** Working directory for the subagent */
 	cwd?: string;
-	/** Environment variables */
+	/**
+	 * Environment variables layered over `process.env` when resolving the
+	 * model's API key. Best-effort: the SDK reads `process.env` directly.
+	 */
 	env?: Record<string, string>;
 	/** Callback for streaming output chunks (for live UI updates) */
 	onChunk?: (chunk: string) => void;
@@ -44,24 +54,34 @@ export interface SpawnPiAgentOptions {
 	 * else). **Default: no-op** (back-compat with existing
 	 * callers).
 	 */
-	onToolCall?: (event: PiRpcToolEvent) => void;
-	/** Additional skills to load for the research agent */
+	onToolCall?: (event: PiSessionToolEvent) => void;
+	/** Callback for `thinking_delta` events from the subagent. */
+	onThinking?: (chunk: string) => void;
+	/**
+	 * Additional skills to load for the research agent. Accepted for
+	 * back-compat; the in-process session uses the `tools` allowlist and does
+	 * not load pi skills. No-op.
+	 */
 	skills?: string[];
-	/** Additional extension paths to load */
+	/**
+	 * Additional extension paths to load. Accepted for back-compat; the
+	 * in-process session does not load pi extensions. No-op.
+	 */
 	extensions?: string[];
-	/** Explicitly disable extensions (default: false) */
+	/**
+	 * Explicitly disable extensions (default: false). Accepted for
+	 * back-compat; the in-process session does not load pi extensions. No-op.
+	 */
 	noExtensions?: boolean;
 	/**
-	 * Persistent session id to assign to the spawned subagent. When set, the
-	 * subagent is launched with `--session-id <id>` so its transcript is
-	 * resumable via `pi --session <id>`. Optional for back-compat with
-	 * callers that don't need a resumable subagent.
+	 * Persistent session id to seed the in-process session with. When set, the
+	 * subagent transcript is resumable via `pi --session <id>`. Optional for
+	 * back-compat with callers that don't need a resumable subagent.
 	 */
 	sessionId?: string;
 	/**
-	 * Human-readable session name passed to the subagent as `--name <name>`.
-	 * Surfaced in `pi -r` pickers. Optional; only added when `sessionId` is
-	 * also set.
+	 * Human-readable session name passed to the subagent. Surfaced in
+	 * `pi -r` pickers. Optional; only applied when `sessionId` is also set.
 	 */
 	sessionName?: string;
 	/**
@@ -93,106 +113,31 @@ export interface SpawnPiAgentOptions {
 /**
  * Default wall-clock budget for the research subagent in milliseconds.
  *
- * The previous 60s default was too tight for non-trivial research
- * queries against large pages (e.g. fontawesome.com docs) and
- * surfaced as `Pi agent timed out after 60000ms` even when the
- * subagent was making progress. 180s covers typical research
- * queries on large pages while still bounding the worst case.
- * Override per-call via `SpawnPiAgentOptions.timeout` or via the
+ * Sized for non-trivial research queries on large pages (e.g. fontawesome.com
+ * docs). Override per-call via `SpawnPiAgentOptions.timeout` or via the
  * `--timeout` flag (CLI) / `timeout` field (MCP / tool).
  */
-// fallow-ignore-next-line unused-exports
 export const DEFAULT_PI_AGENT_TIMEOUT_MS = 300_000;
 
-/** Default skills for research queries */
-// fallow-ignore-next-line unused-exports
-export const DEFAULT_RESEARCH_SKILLS = ['agent-browser', 'planning'];
-
 /** Default tools enabled for research */
-// fallow-ignore-next-line unused-exports
-export const DEFAULT_RESEARCH_TOOLS = ['read', 'grep', 'find', 'ls', 'bash'];
+export const DEFAULT_RESEARCH_TOOLS = [...SESSION_DEFAULT_TOOLS];
 
 export interface SpawnPiAgentResult {
 	/** The analysis result from the sub-agent */
 	analysis: string;
-	/** Exit code of the pi process */
+	/** Exit code of the run (always 0 in-process; a failed turn throws). */
 	exitCode: number;
 	/**
-	 * Persistent session id of the spawned subagent. Sourced from
-	 * the live `get_state` response on the JSON-RPC transport, not
-	 * from the pre-computed id; if the subagent reassigned the
-	 * id, the live value wins. `undefined` when the caller did
-	 * not request a resumable session.
+	 * Persistent session id of the subagent. Sourced from the live in-process
+	 * `AgentSession`; falls back to the pre-computed id if the session did not
+	 * adopt one.
 	 */
 	sessionId?: string;
 	/**
-	 * Human-readable session name of the spawned subagent. Sourced
-	 * from the live `get_state` response.
+	 * Human-readable session name of the subagent. Sourced from the live
+	 * in-process `AgentSession`.
 	 */
 	sessionName?: string;
-}
-
-/**
- * Custom error for spawn failures
- */
-// fallow-ignore-next-line unused-exports
-export class PiAgentError extends Error {
-	constructor(
-		message: string,
-		public readonly exitCode: number | null,
-		public readonly stderr?: string,
-	) {
-		super(message);
-		this.name = 'PiAgentError';
-	}
-}
-
-/**
- * Find the pi executable path
- */
-function findPiExecutable(): string {
-	return 'pi';
-}
-
-/**
- * Resolve skill paths from skill names.
- *
- * For each skill name, search common skill directories
- * (`~/.pi/agent/skills`, `~/.agents/skills`, `<cwd>/.pi/skills`) and
- * return the first existing path. Non-existent skill dirs are
- * silently dropped (a debug-level log is emitted in test envs).
- */
-function resolveSkillPaths(skillNames: string[]): string[] {
-	const skillDirs = [
-		resolve(homedir(), '.pi/agent/skills'),
-		resolve(homedir(), '.agents/skills'),
-		resolve(process.cwd(), '.pi/skills'),
-	];
-
-	const paths: string[] = [];
-	for (const skill of skillNames) {
-		let resolved = false;
-		for (const dir of skillDirs) {
-			const skillPath = resolve(dir, skill);
-			try {
-				if (existsSync(skillPath)) {
-					paths.push(skillPath);
-					resolved = true;
-					break;
-				}
-			} catch {
-				// Permission denied / race; treat as not found.
-			}
-		}
-		if (!resolved) {
-			// Best-effort: surface a debug hint without throwing.
-			// The wrapper does not need a missing skill to be fatal.
-			if (process.env['PI_WEBFETCH_DEBUG_SKILLS'] === '1') {
-				console.error(`[pi-webfetch] skill not found: ${skill}`);
-			}
-		}
-	}
-	return paths;
 }
 
 /**
@@ -271,78 +216,11 @@ read, grep, find, ls, bash
 }
 
 /**
- * Build the argv for the `pi` subprocess.
+ * Run a pi sub-agent in-process to analyze content based on a query.
  *
- * The argv shape is transport-agnostic. The first two args are
- * `--mode rpc` (so `pi` starts in JSON-RPC mode); the rest are
- * the session / skill / tool flags shared with the previous
- * print-mode spawn.
- */
-function buildArgv(
-	piPath: string,
-	options: {
-		skills: string[];
-		extensions?: string[];
-		noExtensions: boolean;
-		sessionId?: string;
-		sessionName?: string;
-		model?: ResearchModelConfig;
-	},
-): string[] {
-	const args: string[] = ['--mode', 'rpc'];
-
-	// Pin the configured research model without changing the parent session model.
-	if (options.model) {
-		args.push('--provider', options.model.provider, '--model', options.model.id);
-	}
-
-	// Add skills (only existing paths on disk; `resolveSkillPaths`
-	// already filters out non-existent skill directories).
-	const skillPaths = resolveSkillPaths(options.skills);
-	for (const path of skillPaths) {
-		args.push('--skill', path);
-	}
-
-	// Add explicit extension paths
-	if (options.extensions) {
-		for (const ext of options.extensions) {
-			args.push('-e', ext);
-		}
-	}
-
-	// Disable extensions discovery unless we have explicit extensions
-	if (options.noExtensions && !options.extensions?.length) {
-		args.push('--no-extensions');
-	}
-
-	// Promote the subagent to a real, named, persistent pi session so
-	// the user can `pi --session <id>` it after a failure. The plan
-	// (`docs/plans/PLAN_AGENT_ERROR_RESUME.md`) is what makes these
-	// resumable subagents part of the failure-ux contract.
-	if (options.sessionId) {
-		args.push('--session-id', options.sessionId);
-		if (options.sessionName) {
-			args.push('--name', options.sessionName);
-		}
-	}
-
-	// Enable useful tools (use allowlist for focused toolset)
-	args.push('--tools', DEFAULT_RESEARCH_TOOLS.join(','));
-
-	// Touch the unused-parameter so eslint doesn't complain about the
-	// the `piPath` arg. We return `args`; the wrapper handles the
-	// `pi` binary via its `piPath` option.
-	void piPath;
-
-	return args;
-}
-
-/**
- * Spawn a pi sub-agent to analyze content based on a query
- *
- * The transport is JSON-RPC over stdio via {@link PiRpcClient}.
- * Text deltas and tool events are streamed to the optional
- * `onChunk` / `onToolCall` callbacks for live UI updates.
+ * The subagent is a direct `AgentSession` from the SDK (no subprocess).
+ * Text deltas and tool events stream to the optional `onChunk` / `onToolCall`
+ * / `onThinking` callbacks for live UI updates.
  *
  * @param _content - The fetched content to analyze. Accepted for
  *   back-compat with the previous signature; NOT inlined in the
@@ -351,7 +229,8 @@ function buildArgv(
  * @param query - The research question or analysis request
  * @param options - Optional configuration
  * @returns The analysis result from the sub-agent
- * @throws {PiAgentError} If spawn fails or process exits with error
+ * @throws {PiAgentError} If the model cannot be resolved, the run fails, or
+ *   the run times out.
  *
  * @example
  * ```typescript
@@ -371,28 +250,16 @@ export async function spawnPiAgent(
 		timeout = DEFAULT_PI_AGENT_TIMEOUT_MS,
 		model,
 		cwd: cwdOption = cwd(),
-		env: envOption = {},
+		env: envOption,
 		onChunk,
 		onToolCall,
-		skills = DEFAULT_RESEARCH_SKILLS,
-		extensions,
-		noExtensions = false,
+		onThinking,
 		sessionId,
 		sessionName,
 		url,
 		inputFile,
 		inputRawFile,
 	} = options;
-
-	const piPath = findPiExecutable();
-	const args = buildArgv(piPath, {
-		skills,
-		extensions,
-		noExtensions,
-		sessionId,
-		sessionName,
-		model,
-	});
 
 	// Build the lean research prompt. The content is NOT inlined;
 	// the prompt references `inputFile` / `inputRawFile` and the
@@ -407,41 +274,35 @@ export async function spawnPiAgent(
 		inputRawFile,
 	});
 
-	const client = new PiRpcClient({
-		piPath,
-		cwd: cwdOption,
-		env: envOption,
-		args,
-	});
-
-	if (onChunk) client.onText(onChunk);
-	if (onToolCall) client.onTool(onToolCall);
-
 	try {
-		const result = await client.run({ prompt, timeoutMs: timeout });
+		const result = await runPiSession({
+			prompt,
+			cwd: cwdOption,
+			timeoutMs: timeout,
+			...(model ? { model } : {}),
+			...(envOption ? { env: envOption } : {}),
+			onChunk,
+			onToolCall,
+			onThinking,
+			...(sessionId ? { sessionId } : {}),
+			...(sessionName ? { sessionName } : {}),
+		});
 		return {
-			analysis: result.text.trim(),
-			exitCode: result.exitCode,
-			// Prefer the live sessionId from `get_state`; fall back
-			// to the pre-computed id if the subagent didn't report
-			// one (e.g. the subagent exited before `get_state`
-			// resolved — the wrapper would have rejected in that
-			// case, so this is a defensive default).
+			analysis: result.analysis,
+			exitCode: 0,
 			sessionId: result.sessionId || sessionId,
 			sessionName: result.sessionName || sessionName,
 		};
 	} catch (err) {
-		// Best-effort cleanup on failure. The wrapper's `stop()`
-		// is a no-op when the process is already gone.
-		await client.stop().catch(() => {});
-		throw err;
+		if (err instanceof PiAgentError) throw err;
+		throw err instanceof Error ? err : new Error(String(err));
 	}
 }
 
 /**
- * Check if pi executable is available
+ * Check if the pi coding-agent SDK is available
  */
 export function isPiAvailable(): boolean {
-	// Simple check - could be enhanced with actual availability check
+	// The SDK is a runtime dependency; if this module loaded, it's available.
 	return true;
 }

@@ -4,9 +4,9 @@
  * Registers the webfetch tool with the pi extension API.
  */
 
-import type { ExtensionAPI } from '@mariozechner/pi-coding-agent';
+import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 import type { WebfetchDetails } from '../types.js';
-import { Text } from '@mariozechner/pi-tui';
+import { Text } from '@earendil-works/pi-tui';
 import { Type } from '@sinclair/typebox';
 import { parseUrlForDisplay, FETCH_PHASE_LABELS } from '../helpers.js';
 import { formatAge } from '../cache.js';
