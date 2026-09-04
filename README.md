@@ -60,8 +60,15 @@ The selection persists in `<pi-agent-dir>/pi-webfetch.json` (normally
 }
 ```
 
-The in-process research subagent runs on an isolated runtime (temp auth
-file, built-in models only) and **never reads** Pi's
+**When no `researchModel` is configured**, the research subagent falls
+back to the **local pi coding-agent configs/auth**: `createAgentSession`
+runs without an isolated runtime, so `~/.pi/agent/auth.json`, custom
+`models.json` providers, and the settings default model are used —
+exactly like a normal pi session.
+
+**When a `researchModel` is configured**, the in-process research
+subagent runs on an isolated runtime (temp auth file, built-in models
+only) and **never reads** Pi's
 `~/.pi/agent/auth.json`, custom `models.json` providers, or settings.
 Keys and endpoints must therefore be supplied to pi-webfetch itself:
 
@@ -70,7 +77,7 @@ Keys and endpoints must therefore be supplied to pi-webfetch itself:
   `OPENCODE_API_KEY` are used).
 - `baseUrl` — override the provider's API endpoint (optional; required
   for gateway/proxy setups such as a LiteLLM endpoint that your `pi`
-  `models.json` normally points at, since that file is not read here):
+  `models.json` normally points at):
 
 ```json
 {

@@ -3,7 +3,18 @@
 All notable changes to `@rwese/pi-webfetch` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.13.0] - 2026-09-04
+
+### Added
+
+- **Local pi config/auth fallback when no research model is
+  configured.** With no `researchModel` in `<pi-agent-dir>/pi-webfetch.json`
+  and no `PI_WEBFETCH_MODEL` env var, `createAgentSession` runs without an
+  isolated runtime: the subagent uses the local `~/.pi/agent/auth.json`,
+  custom `models.json` providers, and the settings default model, exactly
+  like a normal pi session.
+
+## [0.12.0] - 2026-09-04
 
 ### Added
 

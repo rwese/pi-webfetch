@@ -87,7 +87,11 @@ test/fixtures/       offline HTML fixtures and fixture helpers
   dependency. The wrapper builds an isolated `ModelRuntime` (temp auth
   file, built-in models only, no network refresh) and injects any
   explicit / env-driven API key as a runtime key, so the user's
-  `~/.pi/agent/auth.json` is never read. It coalesces `text_delta`
+  `~/.pi/agent/auth.json` is never read — **when a research model is
+  configured**. With no `researchModel` and no `PI_WEBFETCH_MODEL`, the
+  session falls back to the local pi coding-agent configs/auth
+  (`agentDir/auth.json`, `models.json`, settings default model), exactly
+  like a normal pi session. It coalesces `text_delta`
   events to a 16ms flush cadence (one frame at 60fps), surfaces
   `tool_execution_start` events to the parent via an `onToolCall`
   callback, and enforces the wall-clock timeout with `session.abort()`.

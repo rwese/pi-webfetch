@@ -10,9 +10,13 @@
  *
  * The SDK's auth/model surface changed in 0.84.4: `createAgentSession` now
  * takes a `modelRuntime` (a `ModelRuntime`) instead of the legacy
- * `authStorage` / `modelRegistry` pair. We build an isolated `ModelRuntime`
+ * `authStorage` / `modelRegistry` pair. When pi-webfetch has an explicit
+ * research model (or `PI_WEBFETCH_MODEL`), we build an isolated `ModelRuntime`
  * with a temp auth file and inject any explicit / env-driven API key as a
- * runtime key, so the user's `~/.pi/agent/auth.json` is never read.
+ * runtime key, so the user's `~/.pi/agent/auth.json` is never read. When no
+ * research model is configured, `createAgentSession` falls back to the local
+ * pi coding-agent configs (`agentDir/auth.json`, `models.json`, settings
+ * default model) — exactly like a normal pi session.
  *
  * Event surface:
  * - `message_update` with `assistantMessageEvent.type === 'text_delta'` →
@@ -220,38 +224,52 @@ export async function runPiSession(options: PiSessionOptions): Promise<PiSession
 		sessionName,
 	} = options;
 
-	// Explicit pi-webfetch-managed auth: an isolated ModelRuntime (temp auth
-	// file). Never reads the user's `~/.pi/agent/auth.json`.
-	const apiKey = modelOption ? resolveApiKey(modelOption, envOption) : undefined;
-	const modelRuntime = await buildModelRuntime(modelOption, apiKey);
+	// Model/runtime strategy:
+	// 1. Explicit webfetch research model (`pi-webfetch.json` `researchModel`):
+	//    isolated ModelRuntime (temp auth file) with the injected API key and
+	//    optional baseUrl override.
+	// 2. `PI_WEBFETCH_MODEL=provider/id` env: isolated ModelRuntime + env model.
+	// 3. Neither: the **local pi coding-agent configs/auth** — `createAgentSession`
+	//    defaults to `agentDir/auth.json` + `models.json` + the settings default
+	//    model (`findInitialModel`), exactly like a normal pi session.
+	const useLocalPiConfig = !modelOption && !process.env['PI_WEBFETCH_MODEL'];
 
+	let modelRuntime: ModelRuntime | undefined;
 	let model: Model<Api> | undefined;
-	if (modelOption) {
-		model = resolveModel(modelRuntime, modelOption);
-		if (!model) {
-			throw new PiAgentError(
-				`No model found for provider "${modelOption.provider}" id "${modelOption.id}". ` +
-					`Set a research model with /webfetch:model, PI_WEBFETCH_MODEL=provider/id, or pass --model.`,
-				null,
-			);
-		}
-		// Apply the user's base URL override (custom gateway / proxy, e.g. a
-		// LiteLLM endpoint) on top of the resolved model. The resolved model
-		// bakes in the provider's default endpoint; cloning with the override
-		// makes the request builder (e.g. `openai-completions` reads
-		// `model.baseUrl`) hit the custom host.
-		if (modelOption.baseUrl) {
-			model = { ...model, baseUrl: modelOption.baseUrl };
-		}
-	} else {
-		// No explicit model: fall back to `PI_WEBFETCH_MODEL=provider/id`.
-		model = resolveModelFromEnv(modelRuntime);
-		if (!model) {
-			throw new PiAgentError(
-				'No research model available. Set PI_WEBFETCH_MODEL=provider/id, ' +
-					'a research model with /webfetch:model, or an API key env var for a known provider.',
-				null,
-			);
+
+	if (!useLocalPiConfig) {
+		// Explicit pi-webfetch-managed auth: an isolated ModelRuntime (temp auth
+		// file). Never reads the user's `~/.pi/agent/auth.json`.
+		const apiKey = modelOption ? resolveApiKey(modelOption, envOption) : undefined;
+		modelRuntime = await buildModelRuntime(modelOption, apiKey);
+
+		if (modelOption) {
+			model = resolveModel(modelRuntime, modelOption);
+			if (!model) {
+				throw new PiAgentError(
+					`No model found for provider "${modelOption.provider}" id "${modelOption.id}". ` +
+						`Set a research model with /webfetch:model, PI_WEBFETCH_MODEL=provider/id, or pass --model.`,
+					null,
+				);
+			}
+			// Apply the user's base URL override (custom gateway / proxy, e.g. a
+			// LiteLLM endpoint) on top of the resolved model. The resolved model
+			// bakes in the provider's default endpoint; cloning with the override
+			// makes the request builder (e.g. `openai-completions` reads
+			// `model.baseUrl`) hit the custom host.
+			if (modelOption.baseUrl) {
+				model = { ...model, baseUrl: modelOption.baseUrl };
+			}
+		} else {
+			// No explicit model: fall back to `PI_WEBFETCH_MODEL=provider/id`.
+			model = resolveModelFromEnv(modelRuntime);
+			if (!model) {
+				throw new PiAgentError(
+					'No research model available. Set PI_WEBFETCH_MODEL=provider/id, ' +
+						'or a research model with /webfetch:model.',
+					null,
+				);
+			}
 		}
 	}
 
@@ -262,17 +280,32 @@ export async function runPiSession(options: PiSessionOptions): Promise<PiSession
 		sessionManager.newSession({ id: sessionId });
 	}
 
-	const { session } = await createAgentSession({
+	const { session, modelFallbackMessage } = await createAgentSession({
 		cwd: cwdOption,
-		modelRuntime,
-		model,
+		// Isolated path: explicit runtime + model. Local-pi path: omit both so
+		// the SDK reads `agentDir/auth.json` + `models.json` + the settings
+		// default model itself.
+		...(modelRuntime ? { modelRuntime } : {}),
+		...(model ? { model } : {}),
 		// Research subagent tool allowlist — read/grep/find/ls/bash only. No
 		// edit/write: the subagent must not mutate the repo.
 		tools: [...DEFAULT_RESEARCH_TOOLS],
 		sessionManager,
-		settingsManager: SettingsManager.inMemory(),
+		// inMemory settings only for the isolated path; the local-pi path
+		// needs the real settings manager for default-model / thinking-level
+		// resolution.
+		...(modelRuntime ? { settingsManager: SettingsManager.inMemory() } : {}),
 	});
 
+	// Local-pi path: the SDK resolved no model (e.g. no auth configured). The
+	// fallback message also appears when a model IS found ("… Using provider/id")
+	// — only throw when the session really has no model.
+	if (!model && !session.model && modelFallbackMessage) {
+		throw new PiAgentError(
+			`No research model available. Configure pi or pi-webfetch: ${modelFallbackMessage}`,
+			null,
+		);
+	}
 	// Live session identity (the in-process session adopts the seeded id, but
 	// the live values are the source of truth).
 	const liveSessionId = session.sessionId || sessionId || '';

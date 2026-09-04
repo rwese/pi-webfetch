@@ -238,17 +238,59 @@ describe('runPiSession', () => {
 	});
 
 	it('throws PiAgentError when no model is available and no env fallback resolves', async () => {
-		// getModel throws for the env provider and PI_WEBFETCH_MODEL is unset.
-		getModelMock.mockImplementation(() => {
-			throw new Error('unknown model');
-		});
+		// No webfetch research model + no PI_WEBFETCH_MODEL → local-pi path: the
+		// SDK resolves the model from pi configs. When the SDK reports none, we
+		// fail with a PiAgentError.
 		const prev = process.env['PI_WEBFETCH_MODEL'];
 		delete process.env['PI_WEBFETCH_MODEL'];
+		createAgentSessionMock.mockResolvedValue({
+			session: fakeSession,
+			extensionsResult: {},
+			modelFallbackMessage: 'No models configured. Run /login to authenticate a provider.',
+		});
 		try {
 			await expect(runPiSession({ prompt: 'hi' })).rejects.toThrow(PiAgentError);
 			await expect(runPiSession({ prompt: 'hi' })).rejects.toThrow(
 				/No research model available/,
 			);
+		} finally {
+			if (prev === undefined) delete process.env['PI_WEBFETCH_MODEL'];
+			else process.env['PI_WEBFETCH_MODEL'] = prev;
+		}
+	});
+
+	it('falls back to local pi configs/auth when no research model is configured', async () => {
+		// No explicit model + no PI_WEBFETCH_MODEL: createAgentSession is called
+		// WITHOUT modelRuntime / model / settingsManager so the SDK reads
+		// agentDir/auth.json + models.json + the settings default model.
+		const prev = process.env['PI_WEBFETCH_MODEL'];
+		delete process.env['PI_WEBFETCH_MODEL'];
+		try {
+			await runPiSession({ prompt: 'hi' });
+			const opts = createAgentSessionMock.mock.calls[0][0];
+			expect(opts.model).toBeUndefined();
+			expect(opts.modelRuntime).toBeUndefined();
+			expect(opts.settingsManager).toBeUndefined();
+			// The tool allowlist still applies.
+			expect(opts.tools).toEqual(['read', 'grep', 'find', 'ls', 'bash']);
+		} finally {
+			if (prev === undefined) delete process.env['PI_WEBFETCH_MODEL'];
+			else process.env['PI_WEBFETCH_MODEL'] = prev;
+		}
+	});
+
+	it('uses the isolated runtime when PI_WEBFETCH_MODEL is set without a config', async () => {
+		// Env model keeps the isolated-runtime path (temp auth file), even
+		// without an explicit researchModel config.
+		const prev = process.env['PI_WEBFETCH_MODEL'];
+		process.env['PI_WEBFETCH_MODEL'] = 'openrouter/anthropic/claude-sonnet-4';
+		try {
+			await runPiSession({ prompt: 'hi' });
+			const opts = createAgentSessionMock.mock.calls[0][0];
+			expect(opts.model.provider).toBe('openrouter');
+			expect(opts.model.id).toBe('anthropic/claude-sonnet-4');
+			expect(opts.modelRuntime).toBeDefined();
+			expect(opts.settingsManager).toBeDefined();
 		} finally {
 			if (prev === undefined) delete process.env['PI_WEBFETCH_MODEL'];
 			else process.env['PI_WEBFETCH_MODEL'] = prev;
