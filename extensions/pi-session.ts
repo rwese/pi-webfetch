@@ -235,6 +235,14 @@ export async function runPiSession(options: PiSessionOptions): Promise<PiSession
 				null,
 			);
 		}
+		// Apply the user's base URL override (custom gateway / proxy, e.g. a
+		// LiteLLM endpoint) on top of the resolved model. The resolved model
+		// bakes in the provider's default endpoint; cloning with the override
+		// makes the request builder (e.g. `openai-completions` reads
+		// `model.baseUrl`) hit the custom host.
+		if (modelOption.baseUrl) {
+			model = { ...model, baseUrl: modelOption.baseUrl };
+		}
 	} else {
 		// No explicit model: fall back to `PI_WEBFETCH_MODEL=provider/id`.
 		model = resolveModelFromEnv(modelRuntime);

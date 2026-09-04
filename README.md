@@ -60,6 +60,29 @@ The selection persists in `<pi-agent-dir>/pi-webfetch.json` (normally
 }
 ```
 
+The in-process research subagent runs on an isolated runtime (temp auth
+file, built-in models only) and **never reads** Pi's
+`~/.pi/agent/auth.json`, custom `models.json` providers, or settings.
+Keys and endpoints must therefore be supplied to pi-webfetch itself:
+
+- `apiKey` — explicit key for the provider (optional; when unset,
+  provider env vars such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or
+  `OPENCODE_API_KEY` are used).
+- `baseUrl` — override the provider's API endpoint (optional; required
+  for gateway/proxy setups such as a LiteLLM endpoint that your `pi`
+  `models.json` normally points at, since that file is not read here):
+
+```json
+{
+	"researchModel": {
+		"provider": "opencode-go",
+		"id": "deepseek-v4-flash",
+		"apiKey": "<litellm-proxy-key>",
+		"baseUrl": "https://litellm.void.cold.at/v1"
+	}
+}
+```
+
 This setting applies only to research runs with a query. It does not
 change the parent session model or add a model override to the direct
 CLI or MCP surfaces.

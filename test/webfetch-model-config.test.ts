@@ -44,6 +44,21 @@ describe('webfetch model config', () => {
 		expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ researchModel });
 	});
 
+	it('round-trips apiKey and baseUrl overrides', () => {
+		const path = tempConfigPath();
+		const researchModel: ResearchModelConfig = {
+			provider: 'opencode-go',
+			id: 'deepseek-v4-flash',
+			apiKey: 'litellm-proxy-key',
+			baseUrl: 'https://litellm.void.cold.at/v1',
+		};
+
+		saveWebfetchConfig({ researchModel }, path);
+
+		expect(loadWebfetchConfig(path)).toEqual({ researchModel });
+		expect(JSON.parse(readFileSync(path, 'utf8'))).toEqual({ researchModel });
+	});
+
 	it('fails safely for malformed or invalid configuration', () => {
 		const path = tempConfigPath();
 		const dir = join(path, '..');
@@ -53,6 +68,20 @@ describe('webfetch model config', () => {
 		expect(loadWebfetchConfig(path)).toEqual({});
 
 		writeFileSync(path, JSON.stringify({ researchModel: { provider: '', id: 42 } }), 'utf8');
+		expect(loadWebfetchConfig(path)).toEqual({});
+
+		writeFileSync(
+			path,
+			JSON.stringify({ researchModel: { provider: 'openai', id: 'gpt-5', baseUrl: '' } }),
+			'utf8',
+		);
+		expect(loadWebfetchConfig(path)).toEqual({});
+
+		writeFileSync(
+			path,
+			JSON.stringify({ researchModel: { provider: 'openai', id: 'gpt-5', apiKey: 42 } }),
+			'utf8',
+		);
 		expect(loadWebfetchConfig(path)).toEqual({});
 	});
 

@@ -8,6 +8,10 @@ export interface ResearchModelConfig {
 	/** Optional explicit API key for the provider. When unset, provider env
 	 *  vars are used (e.g. `ANTHROPIC_API_KEY`). */
 	apiKey?: string;
+	/** Optional base URL override for the provider's API endpoint (e.g. a
+	 *  LiteLLM / gateway proxy). When unset, the provider's default endpoint
+	 *  is used. */
+	baseUrl?: string;
 }
 
 export interface WebfetchConfig {
@@ -33,6 +37,10 @@ function isResearchModelConfig(value: unknown): value is ResearchModelConfig {
 	if (apiKey !== undefined && (typeof apiKey !== 'string' || apiKey.trim().length === 0)) {
 		return false;
 	}
+	const baseUrl = candidate['baseUrl'];
+	if (baseUrl !== undefined && (typeof baseUrl !== 'string' || baseUrl.trim().length === 0)) {
+		return false;
+	}
 	return true;
 }
 
@@ -51,6 +59,9 @@ export function loadWebfetchConfig(configPath: string = getWebfetchConfigPath())
 		};
 		if (typeof researchModel.apiKey === 'string' && researchModel.apiKey.trim().length > 0) {
 			result.apiKey = researchModel.apiKey.trim();
+		}
+		if (typeof researchModel.baseUrl === 'string' && researchModel.baseUrl.trim().length > 0) {
+			result.baseUrl = researchModel.baseUrl.trim();
 		}
 		return { researchModel: result };
 	} catch {

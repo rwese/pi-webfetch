@@ -3,6 +3,21 @@
 All notable changes to `@rwese/pi-webfetch` are documented here.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- **`apiKey` / `baseUrl` overrides for the research model** in
+  `<pi-agent-dir>/pi-webfetch.json`. The in-process SDK subagent runs on
+  an isolated runtime (temp auth file, built-in models only) and never
+  reads Pi's `~/.pi/agent/auth.json`, custom `models.json` providers, or
+  settings, so custom gateway setups (e.g. a LiteLLM proxy that Pi's own
+  `models.json` points at) previously failed with `PiAgentError` and the
+  agent-error fallback. `researchModel.apiKey` injects the key as a
+  runtime key, and `researchModel.baseUrl` overrides the model's API
+  endpoint (`openai-completions` reads `model.baseUrl` at request time).
+  See `README.md`.
+
 ## [0.11.0] - 2026-09-02
 
 ### Added

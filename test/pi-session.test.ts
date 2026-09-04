@@ -188,6 +188,43 @@ describe('runPiSession', () => {
 		expect(opts.modelRuntime).toBeDefined();
 	});
 
+	it('overrides the resolved model baseUrl from the model config', async () => {
+		getModelMock.mockImplementation((provider: string, id: string) => ({
+			provider,
+			id,
+			reasoning: true,
+			baseUrl: 'https://opencode.ai/zen/go/v1',
+		}));
+		await runPiSession({
+			prompt: 'hi',
+			model: {
+				provider: 'opencode-go',
+				id: 'deepseek-v4-flash',
+				baseUrl: 'https://litellm.void.cold.at/v1',
+			},
+		});
+		const opts = createAgentSessionMock.mock.calls[0][0];
+		expect(opts.model.provider).toBe('opencode-go');
+		expect(opts.model.id).toBe('deepseek-v4-flash');
+		// baseUrl override replaces the built-in endpoint; other fields survive.
+		expect(opts.model.baseUrl).toBe('https://litellm.void.cold.at/v1');
+		expect(opts.model.reasoning).toBe(true);
+	});
+
+	it('keeps the built-in baseUrl when no override is configured', async () => {
+		getModelMock.mockImplementation((provider: string, id: string) => ({
+			provider,
+			id,
+			baseUrl: 'https://opencode.ai/zen/go/v1',
+		}));
+		await runPiSession({
+			prompt: 'hi',
+			model: { provider: 'opencode-go', id: 'deepseek-v4-flash' },
+		});
+		const opts = createAgentSessionMock.mock.calls[0][0];
+		expect(opts.model.baseUrl).toBe('https://opencode.ai/zen/go/v1');
+	});
+
 	it('throws PiAgentError when the model cannot be resolved', async () => {
 		getModelMock.mockImplementation(() => {
 			throw new Error('unknown model');
