@@ -3,4 +3,5 @@ coverage/
 dist/
 .env
 *.log
-.DS_Store.fallow/
+.DS_Store
+.fallow/
